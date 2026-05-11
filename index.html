@@ -668,6 +668,27 @@
     stroke-dasharray: 4 4;
     opacity: 0.7; pointer-events: none;
   }
+  /* Frames */
+  .frame-rect {
+    cursor: move;
+  }
+  .frame-rect.selected {
+    filter: drop-shadow(0 0 6px var(--accent));
+  }
+  .frame-title {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    pointer-events: none;
+    user-select: none;
+  }
+  .frame-corner {
+    fill: var(--accent);
+    stroke: var(--bg);
+    stroke-width: 1.5;
+    cursor: nwse-resize;
+  }
+  .frame-corner.ne, .frame-corner.sw { cursor: nesw-resize; }
   @media (pointer: coarse) {
     .edge-hit { stroke-width: 22; }
   }
@@ -941,6 +962,7 @@
     <span class="zoom-display" id="zoom-display" title="Current zoom — click to reset to 100%">100%</span>
     <button class="btn icon" id="zoom-in-btn" title="Zoom in (Z + scroll, or Ctrl + scroll)">+</button>
     <button class="btn icon" id="fit-content-btn" title="Fit all nodes to view (F)">⊡<span class="btn-label"> Fit</span></button>
+    <button class="btn icon" id="add-frame-btn" title="Add a group / frame around nodes">▢<span class="btn-label"> Frame</span></button>
     <button class="btn icon" id="auto-layout-btn" title="Auto-layout: tidy nodes into layers (L)">▦<span class="btn-label"> Tidy</span></button>
     <button class="btn icon" id="issues-btn" title="Show flow issues" style="display:none;">⚠ 0</button>
     <button class="btn icon" id="reset-view-btn" title="Reset zoom and pan">⊙<span class="btn-label"> Reset</span></button>
@@ -964,6 +986,7 @@
           <path d="M 0 0 L 10 5 L 0 10 z" class="arrow-fill-sel"/>
         </marker>
       </defs>
+      <g id="frames-layer"></g>
       <g id="edges-layer"></g>
       <g id="nodes-layer"></g>
       <g id="overlay-layer"></g>
@@ -1081,8 +1104,11 @@ const state = {
   title: 'Untitled flow',
   nodes: [],
   edges: [],
+  frames: [],                  // labeled containers behind nodes
   selectedNodeIds: new Set(),  // multi-select for nodes
   selectedEdgeId: null,        // edges are single-select only
+  selectedFrameId: null,       // single-select frame
+  frameDrag: null,             // { frameId, mode: 'move'|'resize', anchor, ... }
   mode: 'select',     // 'select' | 'connect' | 'pan'
   connectSource: null,
   drag: null,         // { ids: [], startX, startY, origPositions: Map }
@@ -1163,6 +1189,7 @@ function save() {
     title: state.title,
     nodes: state.nodes,
     edges: state.edges,
+    frames: state.frames,
     nextId: state.nextId,
     createdAt: (prev && prev.createdAt) || Date.now(),
     updatedAt: Date.now(),
@@ -1186,6 +1213,7 @@ function load() {
   state.title = p.title || 'Untitled flow';
   state.nodes = p.nodes || [];
   state.edges = p.edges || [];
+  state.frames = p.frames || [];
   state.nextId = p.nextId || 1;
   state.dirty = !!p.dirty;
   return true;
@@ -1195,19 +1223,22 @@ function load() {
 function serialize() {
   return {
     title: state.title,
-    nodes: state.nodes.map(n => ({...n})),
-    edges: state.edges.map(e => ({...e})),
+    nodes: JSON.parse(JSON.stringify(state.nodes)),
+    edges: JSON.parse(JSON.stringify(state.edges)),
+    frames: JSON.parse(JSON.stringify(state.frames)),
     nextId: state.nextId,
   };
 }
 function deserialize(s) {
   state.title = s.title;
-  state.nodes = s.nodes.map(n => ({...n}));
-  state.edges = s.edges.map(e => ({...e}));
+  state.nodes = JSON.parse(JSON.stringify(s.nodes || []));
+  state.edges = JSON.parse(JSON.stringify(s.edges || []));
+  state.frames = JSON.parse(JSON.stringify(s.frames || []));
   state.nextId = s.nextId;
   // Drop selections that may reference removed items
   state.selectedNodeIds.clear();
   state.selectedEdgeId = null;
+  state.selectedFrameId = null;
 }
 function snapshot() {
   const cur = serialize();
@@ -1321,6 +1352,7 @@ function edgeStart(fromNode, toNode) {
 
 // ---------- DOM helpers ----------
 const svg = document.getElementById('canvas');
+const framesLayer = document.getElementById('frames-layer');
 const edgesLayer = document.getElementById('edges-layer');
 const nodesLayer = document.getElementById('nodes-layer');
 const overlayLayer = document.getElementById('overlay-layer');
@@ -1344,6 +1376,7 @@ function el(tag, attrs = {}, ...children) {
 // ---------- Rendering ----------
 function applyTransform() {
   const t = `translate(${state.pan.x},${state.pan.y}) scale(${state.zoom})`;
+  framesLayer.setAttribute('transform', t);
   edgesLayer.setAttribute('transform', t);
   nodesLayer.setAttribute('transform', t);
   overlayLayer.setAttribute('transform', t);
@@ -1359,12 +1392,13 @@ function render() {
     renderIssuesPanel();
   }
 
+  renderFrames();
   renderEdges();
   renderNodes();
   renderOverlay();
   renderPanel();
 
-  const hasSel = state.selectedNodeIds.size > 0 || state.selectedEdgeId;
+  const hasSel = state.selectedNodeIds.size > 0 || state.selectedEdgeId || state.selectedFrameId;
   document.getElementById('delete-btn').disabled = !hasSel;
   document.getElementById('connect-btn').classList.toggle('active', state.mode === 'connect');
   document.getElementById('pan-btn').classList.toggle('active', state.mode === 'pan');
@@ -1782,6 +1816,172 @@ function pointToSegmentDistance(px, py, x1, y1, x2, y2) {
   return Math.hypot(px - cx, py - cy);
 }
 
+function hexWithAlpha(hex, alpha) {
+  if (!hex || !hex.startsWith('#') || hex.length !== 7) return null;
+  const r = parseInt(hex.slice(1,3), 16);
+  const g = parseInt(hex.slice(3,5), 16);
+  const b = parseInt(hex.slice(5,7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function renderFrames() {
+  framesLayer.innerHTML = '';
+  for (const f of state.frames) {
+    const isSel = state.selectedFrameId === f.id;
+    const stroke = f.color || '#888780';
+    const fill = (f.color && hexWithAlpha(f.color, 0.10)) || 'rgba(150,150,150,0.06)';
+    const rect = el('rect', {
+      class: 'frame-rect' + (isSel ? ' selected' : ''),
+      x: f.x, y: f.y, width: f.w, height: f.h,
+      rx: 8, ry: 8,
+      fill, stroke,
+      'stroke-width': isSel ? 2 : 1.5,
+      'stroke-dasharray': '6 4',
+      'data-frame-id': f.id,
+    });
+    attachFrameHandlers(rect, f);
+    framesLayer.appendChild(rect);
+    // Title sits inside the top of the frame
+    const title = el('text', {
+      class: 'frame-title',
+      x: f.x + 10, y: f.y + 18,
+      fill: stroke,
+    }, f.title || 'Group');
+    framesLayer.appendChild(title);
+    // Resize handles at corners when selected
+    if (isSel) {
+      const corners = [
+        { x: f.x,         y: f.y,         anchor: 'nw' },
+        { x: f.x + f.w,   y: f.y,         anchor: 'ne' },
+        { x: f.x,         y: f.y + f.h,   anchor: 'sw' },
+        { x: f.x + f.w,   y: f.y + f.h,   anchor: 'se' },
+      ];
+      for (const c of corners) {
+        const h = el('rect', {
+          class: 'frame-corner ' + c.anchor,
+          x: c.x - 5, y: c.y - 5, width: 10, height: 10,
+          rx: 2, ry: 2,
+        });
+        attachFrameCornerHandle(h, f, c.anchor);
+        framesLayer.appendChild(h);
+      }
+    }
+  }
+}
+
+function attachFrameHandlers(rect, frame) {
+  rect.addEventListener('contextmenu', (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    showContextMenu(ev.clientX, ev.clientY, menuItemsForFrame(frame.id));
+  });
+  rect.addEventListener('pointerdown', (ev) => {
+    ev.stopPropagation();
+    pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    if (pointers.size >= 2) {
+      cancelOngoingOperations();
+      startPinch();
+      return;
+    }
+    armLongPress(ev, menuItemsForFrame(frame.id));
+    // Pan modes still override
+    if (state.mode === 'pan' || state.spaceDown || ev.button === 1) {
+      startPan(ev);
+      return;
+    }
+    // Select frame, clear node/edge selection
+    state.selectedFrameId = frame.id;
+    state.selectedNodeIds.clear();
+    state.selectedEdgeId = null;
+    // Children inside the frame's current bounds move with it
+    const childIds = state.nodes
+      .filter(n => n.x >= frame.x && n.x <= frame.x + frame.w
+                && n.y >= frame.y && n.y <= frame.y + frame.h)
+      .map(n => n.id);
+    const origPositions = new Map();
+    for (const id of childIds) {
+      const n = state.nodes.find(x => x.id === id);
+      if (n) origPositions.set(id, { x: n.x, y: n.y });
+    }
+    const wp = worldPoint(ev);
+    state.frameDrag = {
+      frameId: frame.id,
+      mode: 'move',
+      startX: wp.x, startY: wp.y,
+      frameOrigX: frame.x, frameOrigY: frame.y,
+      childIds,
+      origPositions,
+      moved: false,
+    };
+    render();
+  });
+}
+
+function attachFrameCornerHandle(rect, frame, anchor) {
+  rect.addEventListener('pointerdown', (ev) => {
+    ev.stopPropagation();
+    pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    if (pointers.size >= 2) {
+      cancelOngoingOperations();
+      startPinch();
+      return;
+    }
+    const wp = worldPoint(ev);
+    state.frameDrag = {
+      frameId: frame.id,
+      mode: 'resize',
+      anchor,
+      startX: wp.x, startY: wp.y,
+      origX: frame.x, origY: frame.y,
+      origW: frame.w, origH: frame.h,
+      moved: false,
+    };
+  });
+}
+
+function menuItemsForFrame(frameId) {
+  return [
+    { label: 'Edit properties', action: () => {
+      state.selectedFrameId = frameId;
+      state.selectedNodeIds.clear();
+      state.selectedEdgeId = null;
+      state.panTab = 'properties';
+      applyPanelCollapsed(false);
+      render();
+    }},
+    'sep',
+    { label: 'Delete frame', danger: true, action: () => {
+      snapshot();
+      state.frames = state.frames.filter(f => f.id !== frameId);
+      if (state.selectedFrameId === frameId) state.selectedFrameId = null;
+      save();
+      render();
+    }},
+  ];
+}
+
+function addFrame() {
+  snapshot();
+  // Compute world coords for current viewport center; create a default-sized frame
+  const rect = svg.getBoundingClientRect();
+  const center = screenToWorld({ x: rect.width / 2, y: rect.height / 2 });
+  const w = 320, h = 220;
+  const frame = {
+    id: genId('frame'),
+    title: 'Group',
+    x: Math.round((center.x - w/2) / 10) * 10,
+    y: Math.round((center.y - h/2) / 10) * 10,
+    w, h,
+  };
+  state.frames.push(frame);
+  state.selectedFrameId = frame.id;
+  state.selectedNodeIds.clear();
+  state.selectedEdgeId = null;
+  state.panTab = 'properties';
+  save();
+  render();
+}
+
 function renderEdges() {
   edgesLayer.innerHTML = '';
   for (const e of state.edges) {
@@ -2016,6 +2216,7 @@ svg.addEventListener('pointerdown', (ev) => {
   if (!ev.shiftKey) {
     state.selectedNodeIds.clear();
     state.selectedEdgeId = null;
+    state.selectedFrameId = null;
   }
   state.marquee = { x1: wp.x, y1: wp.y, x2: wp.x, y2: wp.y, additive: ev.shiftKey, baseSelection: new Set(state.selectedNodeIds) };
   render();
@@ -2035,6 +2236,52 @@ document.addEventListener('pointermove', (ev) => {
   // Pinch in progress — handle first, ignore other operations
   if (pinch && pointers.size >= 2) {
     updatePinch();
+    return;
+  }
+  // Frame move / resize
+  if (state.frameDrag) {
+    const wp = worldPoint(ev);
+    const f = state.frames.find(x => x.id === state.frameDrag.frameId);
+    if (!f) { state.frameDrag = null; return; }
+    const dx = wp.x - state.frameDrag.startX;
+    const dy = wp.y - state.frameDrag.startY;
+    if (!state.frameDrag.moved && (Math.abs(dx) > 2 || Math.abs(dy) > 2)) {
+      state.frameDrag.moved = true;
+      snapshot();
+    }
+    if (state.frameDrag.mode === 'move') {
+      f.x = Math.round((state.frameDrag.frameOrigX + dx) / 10) * 10;
+      f.y = Math.round((state.frameDrag.frameOrigY + dy) / 10) * 10;
+      // Move children
+      const dxApplied = f.x - state.frameDrag.frameOrigX;
+      const dyApplied = f.y - state.frameDrag.frameOrigY;
+      for (const id of state.frameDrag.childIds) {
+        const n = state.nodes.find(x => x.id === id);
+        const orig = state.frameDrag.origPositions.get(id);
+        if (n && orig) {
+          n.x = Math.round((orig.x + dxApplied) / 10) * 10;
+          n.y = Math.round((orig.y + dyApplied) / 10) * 10;
+        }
+      }
+    } else if (state.frameDrag.mode === 'resize') {
+      const a = state.frameDrag.anchor;
+      let nx = state.frameDrag.origX, ny = state.frameDrag.origY;
+      let nw = state.frameDrag.origW, nh = state.frameDrag.origH;
+      if (a === 'nw') { nx = state.frameDrag.origX + dx; ny = state.frameDrag.origY + dy; nw = state.frameDrag.origW - dx; nh = state.frameDrag.origH - dy; }
+      else if (a === 'ne') { ny = state.frameDrag.origY + dy; nw = state.frameDrag.origW + dx; nh = state.frameDrag.origH - dy; }
+      else if (a === 'sw') { nx = state.frameDrag.origX + dx; nw = state.frameDrag.origW - dx; nh = state.frameDrag.origH + dy; }
+      else if (a === 'se') { nw = state.frameDrag.origW + dx; nh = state.frameDrag.origH + dy; }
+      // Clamp min size
+      if (nw < 80) { if (a === 'nw' || a === 'sw') nx -= (80 - nw); nw = 80; }
+      if (nh < 60) { if (a === 'nw' || a === 'ne') ny -= (60 - nh); nh = 60; }
+      f.x = Math.round(nx / 10) * 10;
+      f.y = Math.round(ny / 10) * 10;
+      f.w = Math.round(nw / 10) * 10;
+      f.h = Math.round(nh / 10) * 10;
+    }
+    renderFrames();
+    renderEdges();
+    renderNodes();
     return;
   }
   // Waypoint drag in progress
@@ -2171,6 +2418,14 @@ function onPointerEnd(ev) {
   pointers.delete(ev.pointerId);
   // Cancel any pending long-press
   cancelLongPress();
+  // Frame drag release
+  if (state.frameDrag) {
+    const moved = state.frameDrag.moved;
+    state.frameDrag = null;
+    if (moved) save();
+    render();
+    return;
+  }
   // Waypoint drag release
   if (state.waypointDrag) {
     state.waypointDrag = null;
@@ -2367,21 +2622,24 @@ function selectNode(id) {
   state.selectedNodeIds.clear();
   state.selectedNodeIds.add(id);
   state.selectedEdgeId = null;
+  state.selectedFrameId = null;
   state.panTab = 'properties';
   render();
 }
 function selectEdge(id) {
   state.selectedNodeIds.clear();
   state.selectedEdgeId = id;
+  state.selectedFrameId = null;
   state.panTab = 'properties';
   render();
 }
 function clearSelection() {
   state.selectedNodeIds.clear();
   state.selectedEdgeId = null;
+  state.selectedFrameId = null;
 }
 function deleteSelected() {
-  if (state.selectedNodeIds.size === 0 && !state.selectedEdgeId) return;
+  if (state.selectedNodeIds.size === 0 && !state.selectedEdgeId && !state.selectedFrameId) return;
   snapshot();
   if (state.selectedNodeIds.size > 0) {
     const ids = state.selectedNodeIds;
@@ -2390,6 +2648,9 @@ function deleteSelected() {
   }
   if (state.selectedEdgeId) {
     state.edges = state.edges.filter(e => e.id !== state.selectedEdgeId);
+  }
+  if (state.selectedFrameId) {
+    state.frames = state.frames.filter(f => f.id !== state.selectedFrameId);
   }
   clearSelection();
   save();
@@ -2735,6 +2996,7 @@ function cancelOngoingOperations() {
   if (state.isPanning) { state.isPanning = false; state.panStart = null; }
   if (state.waypointDrag) state.waypointDrag = null;
   if (state.connectDrag) state.connectDrag = null;
+  if (state.frameDrag) state.frameDrag = null;
 }
 let pinch = null; // { startDist, startZoom, startMidWorld }
 
@@ -3234,8 +3496,69 @@ function renderPanel() {
 
   const numNodes = state.selectedNodeIds.size;
   const hasEdge = !!state.selectedEdgeId;
+  const hasFrame = !!state.selectedFrameId;
 
-  if (numNodes === 0 && !hasEdge) {
+  // Frame selected: show frame properties
+  if (hasFrame && numNodes === 0 && !hasEdge) {
+    const f = state.frames.find(x => x.id === state.selectedFrameId);
+    if (!f) return;
+    c.innerHTML = `
+      <div class="field">
+        <label>Frame title</label>
+        <input type="text" id="f-frame-title" value="${escapeHtml(f.title || '')}" placeholder="e.g. Auth subsystem">
+      </div>
+      <div class="field">
+        <label>Color</label>
+        <div class="color-row" id="f-frame-color-row"></div>
+        <div class="help">Tints the border + fill. Click the swatch again to reset.</div>
+      </div>
+      <button class="btn danger" id="f-frame-delete" style="width:100%;">Delete frame</button>
+    `;
+    document.getElementById('f-frame-title').addEventListener('focus', snapshot);
+    document.getElementById('f-frame-title').addEventListener('input', (ev) => {
+      f.title = ev.target.value;
+      save();
+      renderFrames();
+    });
+    const FRAME_PALETTE = [
+      '#5fa5f4', '#3eaa6c', '#f0c75c', '#e07b5b', '#a87fd6',
+      '#c0dd97', '#fac775', '#9fe1cb', '#888780',
+    ];
+    const row = document.getElementById('f-frame-color-row');
+    const reset = document.createElement('button');
+    reset.className = 'color-swatch reset';
+    reset.title = 'Default';
+    if (!f.color) reset.classList.add('selected');
+    reset.addEventListener('click', () => {
+      snapshot(); delete f.color; save(); render();
+    });
+    row.appendChild(reset);
+    for (const col of FRAME_PALETTE) {
+      const sw = document.createElement('button');
+      sw.className = 'color-swatch';
+      sw.style.background = col;
+      sw.title = col;
+      if (f.color && f.color.toLowerCase() === col.toLowerCase()) sw.classList.add('selected');
+      sw.addEventListener('click', () => {
+        snapshot();
+        if (f.color && f.color.toLowerCase() === col.toLowerCase()) delete f.color;
+        else f.color = col;
+        save();
+        render();
+      });
+      row.appendChild(sw);
+    }
+    document.getElementById('f-frame-delete').addEventListener('click', () => {
+      snapshot();
+      state.frames = state.frames.filter(x => x.id !== state.selectedFrameId);
+      state.selectedFrameId = null;
+      save();
+      render();
+    });
+    return;
+  }
+
+  if (numNodes === 0 && !hasEdge && !hasFrame) {
     c.innerHTML = `
       <div class="empty-state">
         <p>Nothing selected.</p>
@@ -3856,6 +4179,7 @@ document.getElementById('zoom-out-btn').addEventListener('click', () => zoomBy(1
 document.getElementById('zoom-display').addEventListener('click', () => setZoom(1));
 document.getElementById('fit-content-btn').addEventListener('click', () => fitToContent());
 document.getElementById('auto-layout-btn').addEventListener('click', () => autoLayout());
+document.getElementById('add-frame-btn').addEventListener('click', () => addFrame());
 
 // ---------- Find & Replace ----------
 function openFindReplace() {
@@ -4320,11 +4644,13 @@ function newProject(templateKeyOrBool) {
     state.title = seed.title;
     state.nodes = JSON.parse(JSON.stringify(seed.nodes));
     state.edges = JSON.parse(JSON.stringify(seed.edges));
+    state.frames = JSON.parse(JSON.stringify(seed.frames || []));
     state.nextId = seed.nextId;
   } else {
     state.title = 'Untitled flow';
     state.nodes = [];
     state.edges = [];
+    state.frames = [];
     state.nextId = 1;
   }
   save();
@@ -4346,6 +4672,7 @@ function switchProject(id) {
   state.title = p.title || 'Untitled';
   state.nodes = p.nodes || [];
   state.edges = p.edges || [];
+  state.frames = p.frames || [];
   state.nextId = p.nextId || 1;
   state.pan = { x: 0, y: 0 };
   state.zoom = 1;
@@ -4512,6 +4839,7 @@ function serializeProject() {
     title: state.title,
     nodes: state.nodes,
     edges: state.edges,
+    frames: state.frames,
     nextId: state.nextId,
     _format: 'flowspec.v1',
   };
@@ -4688,6 +5016,7 @@ async function applyOpenedFile(data, filename, fileHandle) {
   state.title = data.title || filename.replace(/\.flowspec\.json$/, '').replace(/\.json$/, '');
   state.nodes = data.nodes || [];
   state.edges = data.edges || [];
+  state.frames = data.frames || [];
   state.nextId = data.nextId || (state.nodes.length + state.edges.length + 1);
   state.pan = { x: 0, y: 0 };
   state.zoom = 1;
