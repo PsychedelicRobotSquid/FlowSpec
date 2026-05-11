@@ -1281,7 +1281,7 @@
 // =============================================================
 // FlowSpec — visual flowchart builder with LLM-friendly text out
 // =============================================================
-const FLOWSPEC_VERSION = '0.10.3';
+const FLOWSPEC_VERSION = '0.10.4';
 
 const NODE_TYPES = {
   start:    { label: 'Start',    color: '#c0dd97', stroke: '#3b6d11', text: '#173404', shape: 'pill',    hint: 'Where the flow begins. Typically one per chart.' },
@@ -3429,8 +3429,9 @@ function updateIssuesUI() {
 //   - selection active → only the selected nodes are pushed around
 //   - no selection → frames are treated as units (rectangle + children move
 //     together), and free nodes (those not inside any frame) are top-level
-//     obstacles. A second pass resolves overlaps among the children of each
-//     frame.
+//     obstacles. A per-frame pass resolves child overlaps inside each frame
+//   - either mode: after children shift, frames GROW to keep their original
+//     contents inside (never shrink — user-sized space is respected)
 //
 // Direction: each overlapping pair is pushed apart along the axis of smaller
 // overlap (less disruption), snapped to 10px, with a 20px gap added.
@@ -3443,31 +3444,25 @@ function autoLayout() {
     n.x >= f.x && n.x <= f.x + f.w && n.y >= f.y && n.y <= f.y + f.h;
   const inAnyFrame = (n) => state.frames.some(f => inFrame(n, f));
 
-  // Build top-level obstacles
-  let topLevel;
-  if (hasSelection) {
-    // Just the selected nodes. Frames are not moved.
-    topLevel = Array.from(state.selectedNodeIds)
-      .map(id => state.nodes.find(x => x.id === id))
-      .filter(Boolean)
-      .map(makeNodeObstacle);
-  } else {
-    const frameObstacles = state.frames.map(makeFrameObstacle);
-    const freeNodeObstacles = state.nodes
-      .filter(n => !inAnyFrame(n))
-      .map(makeNodeObstacle);
-    topLevel = [...frameObstacles, ...freeNodeObstacles];
+  // Snapshot original frame membership BEFORE anything moves, so children
+  // pushed outside their frame can still be tracked and the frame grown
+  // to contain them.
+  const frameChildren = new Map();
+  for (const f of state.frames) {
+    frameChildren.set(f.id, state.nodes.filter(n => inFrame(n, f)));
   }
 
-  // Bail if there's nothing meaningful to do
+  // Bail check
   let pendingPerFrame = 0;
   if (!hasSelection) {
     for (const f of state.frames) {
-      const children = state.nodes.filter(n => inFrame(n, f));
-      if (children.length >= 2) pendingPerFrame++;
+      if ((frameChildren.get(f.id) || []).length >= 2) pendingPerFrame++;
     }
   }
-  if (topLevel.length < 2 && pendingPerFrame === 0) {
+  const topLevelCount = hasSelection
+    ? state.selectedNodeIds.size
+    : state.frames.length + state.nodes.filter(n => !inAnyFrame(n)).length;
+  if (topLevelCount < 2 && pendingPerFrame === 0 && state.frames.length === 0) {
     setStatus(hasSelection
       ? 'Select 2 or more nodes to tidy.'
       : 'Nothing to tidy — fewer than 2 objects.');
@@ -3476,29 +3471,69 @@ function autoLayout() {
 
   snapshot();
   let totalMoves = 0;
+  let totalGrows = 0;
 
-  // 1) Resolve overlaps at the top level
-  totalMoves += resolveOverlaps(topLevel);
+  // Outer loop: keep iterating until stable. Each pass: top-level overlaps,
+  // per-frame overlaps, then expand frames to fit children. If anything
+  // changed (move or grow), do another pass since grown frames may now
+  // overlap their neighbors.
+  const MAX_OUTER = 8;
+  for (let outer = 0; outer < MAX_OUTER; outer++) {
+    let outerChanged = false;
 
-  // 2) Resolve overlaps inside each frame (only when not in selection mode)
-  if (!hasSelection) {
-    for (const f of state.frames) {
-      // Re-scan children using current positions (top-level pass may have moved the frame + its children together)
-      const children = state.nodes.filter(n => inFrame(n, f));
-      if (children.length >= 2) {
-        totalMoves += resolveOverlaps(children.map(makeNodeObstacle));
+    // Build top-level obstacles fresh each pass (frame bboxes may have grown)
+    let topLevel;
+    if (hasSelection) {
+      topLevel = Array.from(state.selectedNodeIds)
+        .map(id => state.nodes.find(x => x.id === id))
+        .filter(Boolean)
+        .map(makeNodeObstacle);
+    } else {
+      const frameObs = state.frames.map(f =>
+        buildFrameObstacle(f, frameChildren.get(f.id) || []));
+      const freeNodeObs = state.nodes
+        .filter(n => !inAnyFrame(n))
+        .map(makeNodeObstacle);
+      topLevel = [...frameObs, ...freeNodeObs];
+    }
+
+    // 1) Resolve overlaps at the top level
+    const m1 = resolveOverlaps(topLevel);
+    if (m1 > 0) { totalMoves += m1; outerChanged = true; }
+
+    // 2) Resolve overlaps inside each frame (only when not in selection mode)
+    if (!hasSelection) {
+      for (const f of state.frames) {
+        const children = frameChildren.get(f.id) || [];
+        if (children.length >= 2) {
+          const m2 = resolveOverlaps(children.map(makeNodeObstacle));
+          if (m2 > 0) { totalMoves += m2; outerChanged = true; }
+        }
       }
     }
+
+    // 3) Grow frames to fit their original children (handles both modes)
+    for (const f of state.frames) {
+      const children = frameChildren.get(f.id) || [];
+      if (children.length > 0) {
+        const grew = growFrameToFit(f, children);
+        if (grew) { totalGrows++; outerChanged = true; }
+      }
+    }
+
+    if (!outerChanged) break;
   }
 
-  if (totalMoves === 0) {
+  if (totalMoves === 0 && totalGrows === 0) {
     setStatus('Already tidy — no overlaps detected.');
-    // Don't bother saving an empty snapshot
     return;
   }
   save();
   render();
-  setStatus(`Tidied — resolved ${totalMoves} overlap${totalMoves===1?'':'s'}.`);
+  const parts = [];
+  if (totalMoves > 0) parts.push(`${totalMoves} overlap${totalMoves===1?'':'s'} resolved`);
+  if (totalGrows > 0) parts.push(`${totalGrows} frame${totalGrows===1?'':'s'} grown`);
+  setStatus('Tidied — ' + parts.join(', ') + '.');
 }
 
 function makeNodeObstacle(n) {
@@ -3514,10 +3549,10 @@ function makeNodeObstacle(n) {
   };
 }
 
-function makeFrameObstacle(f) {
-  // Children = nodes whose center is inside the frame's current bbox
-  const children = state.nodes.filter(n =>
-    n.x >= f.x && n.x <= f.x + f.w && n.y >= f.y && n.y <= f.y + f.h);
+// Build a frame obstacle whose children list is fixed (passed in) rather than
+// recomputed from current positions — so a child that gets pushed outside is
+// still moved with the frame and the frame can grow to re-contain it.
+function buildFrameObstacle(f, children) {
   return {
     kind: 'frame',
     ref: f,
@@ -3529,6 +3564,42 @@ function makeFrameObstacle(f) {
       for (const c of children) { c.x += dx; c.y += dy; }
     },
   };
+}
+
+// Expand a frame's bounds (only grow, never shrink) to contain all the given
+// children with padding. Returns true if anything changed.
+function growFrameToFit(frame, children) {
+  if (children.length === 0) return false;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const c of children) {
+    const s = nodeSize(c);
+    if (c.x - s.width/2 < minX)  minX = c.x - s.width/2;
+    if (c.y - s.height/2 < minY) minY = c.y - s.height/2;
+    if (c.x + s.width/2 > maxX)  maxX = c.x + s.width/2;
+    if (c.y + s.height/2 > maxY) maxY = c.y + s.height/2;
+  }
+  const PAD = 20;
+  const TITLE = 28; // top breathing room for the frame title
+  // Required outer rectangle to contain children with padding
+  const targetLeft   = Math.floor((minX - PAD) / 10) * 10;
+  const targetTop    = Math.floor((minY - TITLE) / 10) * 10;
+  const targetRight  = Math.ceil((maxX + PAD) / 10) * 10;
+  const targetBottom = Math.ceil((maxY + PAD) / 10) * 10;
+  // Only grow — never make the user's manually-sized frame smaller
+  const newLeft   = Math.min(frame.x, targetLeft);
+  const newTop    = Math.min(frame.y, targetTop);
+  const newRight  = Math.max(frame.x + frame.w, targetRight);
+  const newBottom = Math.max(frame.y + frame.h, targetBottom);
+  const newW = newRight - newLeft;
+  const newH = newBottom - newTop;
+  if (newLeft === frame.x && newTop === frame.y && newW === frame.w && newH === frame.h) {
+    return false;
+  }
+  frame.x = newLeft;
+  frame.y = newTop;
+  frame.w = newW;
+  frame.h = newH;
+  return true;
 }
 
 // Push overlapping obstacles apart, smaller-overlap direction wins (less

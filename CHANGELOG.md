@@ -2,6 +2,14 @@
 
 All notable changes to FlowSpec. Format roughly follows [Keep a Changelog](https://keepachangelog.com/). Versioning is loose pre-1.0 — minor bumps for feature batches, patch bumps for fixes.
 
+## [0.10.4] — 2026-05-11
+
+### Changed
+- **Tidy now grows frames** to contain their original children. If a per-frame overlap pass pushes a child past the frame's edge, the frame's bounds expand (with 20px padding + room for the title) so nothing escapes its group. Frames only grow, never shrink — your manually-sized space is respected
+- **Outer convergence loop** (max 8 iterations) — after frames grow they may now overlap their neighbors, so the algorithm re-runs the top-level overlap pass. Iterates until stable, then stops
+- **Original-membership tracking** — children are remembered at the start of Tidy, not re-detected on each pass, so a pushed-out child is still moved with its frame and the frame still grows for it
+- Status message now reports both kinds of work separately, e.g. "Tidied — 3 overlaps resolved, 1 frame grown"
+
 ## [0.10.3] — 2026-05-11
 
 ### Changed
