@@ -901,20 +901,8 @@
   @media (max-width: 800px) {
     .btn-label { display: none; }
   }
-  .floating-exit-fs {
-    position: fixed; top: 8px; right: 8px;
-    z-index: 60;
-    display: none;
-    background: rgba(0,0,0,0.55);
-    color: #fff;
-    border: 1px solid rgba(255,255,255,0.18);
-    border-radius: 6px;
-    padding: 6px 10px; font-size: 14px;
-    cursor: pointer; font-family: inherit;
-    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
-  }
-  .floating-exit-fs:hover { background: rgba(0,0,0,0.7); }
-  body.fullscreen .floating-exit-fs { display: inline-flex; align-items: center; gap: 4px; }
+  /* Visual separator between action tools and the Exit button */
+  .floating-fs-exit { margin-left: 8px; }
   .floating-fs-tools {
     position: fixed; top: 8px; left: 8px;
     z-index: 60;
@@ -1119,7 +1107,6 @@
     <input type="file" id="open-file-fallback" style="display:none" accept="application/json,.json">
   </div>
 </header>
-<button class="floating-exit-fs" id="exit-fullscreen-btn" title="Exit fullscreen">⛶ Exit</button>
 <div class="floating-fs-tools" id="floating-fs-tools">
   <div class="dropdown" id="floating-add-dropdown">
     <button class="floating-fs-tool" id="floating-add-btn" title="Add a node">+ Add ▾</button>
@@ -1131,6 +1118,7 @@
   <button class="floating-fs-tool" id="floating-tidy-btn" title="Tidy / Auto-layout (L)">▦</button>
   <button class="floating-fs-tool" id="floating-fit-btn" title="Fit all to view (F)">⊡</button>
   <button class="floating-fs-tool" id="floating-reset-btn" title="Reset view to origin">⊙</button>
+  <button class="floating-fs-tool floating-fs-exit" id="exit-fullscreen-btn" title="Exit fullscreen">⛶ Exit</button>
 </div>
 <div class="context-menu" id="context-menu"></div>
 <div class="tour-overlay" id="tour-overlay">
@@ -1351,7 +1339,7 @@
 // =============================================================
 // FlowSpec — visual flowchart builder with LLM-friendly text out
 // =============================================================
-const FLOWSPEC_VERSION = '0.14.0';
+const FLOWSPEC_VERSION = '0.14.1';
 
 const NODE_TYPES = {
   start:    { label: 'Start',    color: '#c0dd97', stroke: '#3b6d11', text: '#173404', shape: 'pill',    hint: 'Where the flow begins. Typically one per chart.' },

@@ -2,6 +2,11 @@
 
 All notable changes to FlowSpec. Format roughly follows [Keep a Changelog](https://keepachangelog.com/). Versioning is loose pre-1.0 — minor bumps for feature batches, patch bumps for fixes.
 
+## [0.14.1] — 2026-05-11
+
+### Changed
+- **Fullscreen Exit button moved into the floating top-left toolbar** alongside the other fullscreen tools. On desktop it was overlapping the right-panel tab bar in the top-right corner; on mobile it was at the opposite corner from everything else. Now `+ Add ▾ / ▢ / ▦ / ⊡ / ⊙ / ⛶ Exit` are grouped together with a small visual gap before Exit
+
 ## [0.14.0] — 2026-05-11
 
 ### Added
