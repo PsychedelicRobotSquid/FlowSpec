@@ -425,6 +425,21 @@
   .color-row {
     display: flex; flex-wrap: wrap; gap: 6px;
   }
+  .fr-checks {
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .fr-check {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; color: var(--text);
+    text-transform: none; letter-spacing: 0; font-weight: 400;
+    margin-bottom: 0;
+    cursor: pointer;
+    user-select: none;
+  }
+  .fr-check input[type="checkbox"] {
+    width: auto; padding: 0; margin: 0;
+    accent-color: var(--accent);
+  }
   .color-swatch {
     width: 26px; height: 26px;
     border-radius: 6px;
@@ -869,6 +884,8 @@
         <hr style="border:none; border-top:1px solid var(--border); margin:4px 0;">
         <button class="dropdown-item" data-more="export-json">⤓ JSON copy</button>
         <button class="dropdown-item" data-more="export-png">🖼 PNG image</button>
+        <hr style="border:none; border-top:1px solid var(--border); margin:4px 0;">
+        <button class="dropdown-item" data-more="find-replace">🔎 Find &amp; Replace…</button>
       </div>
     </div>
     <input type="file" id="open-file-fallback" style="display:none" accept="application/json,.json">
@@ -969,6 +986,41 @@
   </aside>
 </main>
 
+
+<div class="modal-backdrop" id="findreplace-modal">
+  <div class="modal" style="width: 440px;">
+    <div class="modal-header">
+      <h2>Find &amp; Replace</h2>
+      <button class="modal-close" id="findreplace-close" title="Close">×</button>
+    </div>
+    <div class="modal-body" style="padding: 16px;">
+      <div class="field">
+        <label>Find</label>
+        <input type="text" id="fr-find" placeholder="text to search for" autocomplete="off">
+      </div>
+      <div class="field">
+        <label>Replace with</label>
+        <input type="text" id="fr-replace" placeholder="(leave empty to remove)" autocomplete="off">
+      </div>
+      <div class="field">
+        <label>Search in</label>
+        <div class="fr-checks">
+          <label class="fr-check"><input type="checkbox" id="fr-labels" checked> Labels</label>
+          <label class="fr-check"><input type="checkbox" id="fr-desc" checked> Descriptions</label>
+          <label class="fr-check"><input type="checkbox" id="fr-edge-labels"> Edge labels</label>
+        </div>
+      </div>
+      <div class="field">
+        <label class="fr-check"><input type="checkbox" id="fr-case"> Match case</label>
+      </div>
+      <div id="fr-status" style="font-size:12px; color:var(--text-muted); min-height:1.4em;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" id="fr-find-btn">Find</button>
+      <button class="btn primary" id="fr-replace-btn">Replace All</button>
+    </div>
+  </div>
+</div>
 
 <div class="modal-backdrop" id="projects-modal">
   <div class="modal" style="width: 560px;">
@@ -2031,11 +2083,23 @@ document.addEventListener('keydown', (ev) => {
     ev.preventDefault();
     return;
   }
+  // Find & Replace: Ctrl+H on Windows/Linux, Cmd+Shift+H on Mac (Cmd+H is OS-reserved)
+  if (ev.key === 'h' && ((ev.ctrlKey && !ev.metaKey) || (ev.metaKey && ev.shiftKey))) {
+    openFindReplace();
+    ev.preventDefault();
+    return;
+  }
   if (ev.target.matches('input, textarea, select')) return;
   // Modal close on Esc takes priority
   const modal = document.getElementById('projects-modal');
   if (modal && modal.classList.contains('open') && ev.key === 'Escape') {
     closeProjectsModal();
+    ev.preventDefault();
+    return;
+  }
+  const frModal = document.getElementById('findreplace-modal');
+  if (frModal && frModal.classList.contains('open') && ev.key === 'Escape') {
+    closeFindReplace();
     ev.preventDefault();
     return;
   }
@@ -3619,6 +3683,135 @@ document.getElementById('zoom-display').addEventListener('click', () => setZoom(
 document.getElementById('fit-content-btn').addEventListener('click', () => fitToContent());
 document.getElementById('auto-layout-btn').addEventListener('click', () => autoLayout());
 
+// ---------- Find & Replace ----------
+function openFindReplace() {
+  const m = document.getElementById('findreplace-modal');
+  m.classList.add('open');
+  document.getElementById('fr-status').textContent = '';
+  const findInput = document.getElementById('fr-find');
+  // Auto-fill with current selection's label, if any
+  if (state.selectedNodeIds.size === 1) {
+    const n = state.nodes.find(x => state.selectedNodeIds.has(x.id));
+    if (n && n.label) findInput.value = n.label;
+  }
+  setTimeout(() => findInput.focus(), 30);
+}
+function closeFindReplace() {
+  document.getElementById('findreplace-modal').classList.remove('open');
+  // Clear any search highlights left over from "Find"
+  state.searchHits = new Set();
+  render();
+}
+function escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+function getFindReplaceQuery() {
+  return {
+    find: document.getElementById('fr-find').value,
+    replace: document.getElementById('fr-replace').value,
+    matchCase: document.getElementById('fr-case').checked,
+    inLabels: document.getElementById('fr-labels').checked,
+    inDesc: document.getElementById('fr-desc').checked,
+    inEdgeLabels: document.getElementById('fr-edge-labels').checked,
+  };
+}
+function findReplaceFind() {
+  const q = getFindReplaceQuery();
+  if (!q.find) {
+    document.getElementById('fr-status').textContent = 'Enter text to find.';
+    return;
+  }
+  if (!q.inLabels && !q.inDesc && !q.inEdgeLabels) {
+    document.getElementById('fr-status').textContent = 'Pick at least one field to search in.';
+    return;
+  }
+  const regex = new RegExp(escapeRegex(q.find), q.matchCase ? 'g' : 'gi');
+  let total = 0;
+  let nodeHits = 0;
+  let edgeHits = 0;
+  const hitNodes = new Set();
+  for (const n of state.nodes) {
+    let nodeMatched = false;
+    if (q.inLabels && n.label) {
+      const m = n.label.match(regex);
+      if (m) { total += m.length; nodeMatched = true; }
+    }
+    if (q.inDesc && n.description) {
+      const m = n.description.match(regex);
+      if (m) { total += m.length; nodeMatched = true; }
+    }
+    if (nodeMatched) { hitNodes.add(n.id); nodeHits++; }
+  }
+  if (q.inEdgeLabels) {
+    for (const e of state.edges) {
+      if (e.label) {
+        const m = e.label.match(regex);
+        if (m) { total += m.length; edgeHits++; }
+      }
+    }
+  }
+  // Highlight matching nodes on the canvas
+  state.searchHits = hitNodes;
+  render();
+  const parts = [];
+  parts.push(`${total} match${total===1?'':'es'}`);
+  if (nodeHits) parts.push(`${nodeHits} node${nodeHits===1?'':'s'}`);
+  if (edgeHits) parts.push(`${edgeHits} edge label${edgeHits===1?'':'s'}`);
+  document.getElementById('fr-status').textContent = total > 0 ? parts.join(' · ') : 'No matches.';
+}
+function findReplaceAll() {
+  const q = getFindReplaceQuery();
+  if (!q.find) {
+    document.getElementById('fr-status').textContent = 'Enter text to find.';
+    return;
+  }
+  if (!q.inLabels && !q.inDesc && !q.inEdgeLabels) {
+    document.getElementById('fr-status').textContent = 'Pick at least one field to search in.';
+    return;
+  }
+  const regex = new RegExp(escapeRegex(q.find), q.matchCase ? 'g' : 'gi');
+  let replacements = 0;
+  const countingReplacer = () => { replacements++; return q.replace; };
+  snapshot();
+  for (const n of state.nodes) {
+    if (q.inLabels && n.label) {
+      n.label = n.label.replace(regex, countingReplacer);
+    }
+    if (q.inDesc && n.description) {
+      n.description = n.description.replace(regex, countingReplacer);
+    }
+  }
+  if (q.inEdgeLabels) {
+    for (const e of state.edges) {
+      if (e.label) {
+        e.label = e.label.replace(regex, countingReplacer);
+      }
+    }
+  }
+  save();
+  state.searchHits = new Set();
+  render();
+  document.getElementById('fr-status').textContent =
+    replacements > 0
+      ? `Replaced ${replacements} occurrence${replacements===1?'':'s'}.`
+      : 'No matches to replace.';
+}
+
+document.getElementById('findreplace-close').addEventListener('click', closeFindReplace);
+document.getElementById('findreplace-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'findreplace-modal') closeFindReplace();
+});
+document.getElementById('fr-find-btn').addEventListener('click', findReplaceFind);
+document.getElementById('fr-replace-btn').addEventListener('click', findReplaceAll);
+document.getElementById('fr-find').addEventListener('keydown', (ev) => {
+  if (ev.key === 'Enter') { ev.preventDefault(); findReplaceFind(); }
+  if (ev.key === 'Escape') closeFindReplace();
+});
+document.getElementById('fr-replace').addEventListener('keydown', (ev) => {
+  if (ev.key === 'Enter') { ev.preventDefault(); findReplaceAll(); }
+  if (ev.key === 'Escape') closeFindReplace();
+});
+
 // Issues panel
 function renderIssuesPanel() {
   const body = document.getElementById('issues-body');
@@ -4548,6 +4741,7 @@ document.querySelectorAll('#more-menu .dropdown-item').forEach(item => {
       case 'save-as': saveFileAs(); break;
       case 'export-json': exportJsonCopy(); break;
       case 'export-png': exportPng(); break;
+      case 'find-replace': openFindReplace(); break;
     }
   });
 });
