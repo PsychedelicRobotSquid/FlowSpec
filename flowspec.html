@@ -95,15 +95,69 @@
     color: var(--text); letter-spacing: -0.01em;
   }
   header h1 .tag { color: var(--text-faint); font-weight: 400; margin-left: 6px; font-size: 12px; }
+  header .title-wrap {
+    flex: 1; min-width: 0; max-width: 520px;
+    display: flex; align-items: center; gap: 8px;
+  }
   header .title-input {
-    flex: 1; max-width: 420px;
+    flex: 1; min-width: 0; max-width: 320px;
     padding: 6px 10px;
     border: 1px solid var(--border); border-radius: 6px;
     font-size: 13px; background: var(--field-bg); color: var(--text);
     font-family: inherit;
   }
   header .title-input:focus { outline: none; border-color: var(--text-faint); background: var(--field-bg-focus); }
+  header .title-meta {
+    display: flex; align-items: center; gap: 6px;
+    min-width: 0;
+  }
+  .dirty-dot {
+    color: var(--accent); font-size: 18px; line-height: 1;
+    font-weight: 700;
+    user-select: none;
+  }
+  .linked-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 8px;
+    background: var(--surface-3);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 11px; color: var(--text-muted);
+    font-family: ui-monospace, monospace;
+    max-width: 220px;
+  }
+  .linked-chip .linked-name {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .linked-chip .linked-unlink {
+    background: none; border: none; cursor: pointer;
+    color: var(--text-faint); padding: 0 2px;
+    font-size: 14px; line-height: 1;
+    font-family: inherit;
+  }
+  .linked-chip .linked-unlink:hover { color: var(--danger-text); }
+
   header .actions { display: flex; gap: 6px; margin-left: auto; flex-wrap: wrap; }
+
+  /* Dropdown menu */
+  .dropdown { position: relative; display: inline-block; }
+  .dropdown-menu {
+    position: absolute; top: 100%; right: 0; margin-top: 4px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; box-shadow: var(--shadow);
+    min-width: 220px; padding: 4px;
+    z-index: 50; display: none;
+  }
+  .dropdown.open .dropdown-menu { display: block; }
+  .dropdown-item {
+    display: block; width: 100%; text-align: left;
+    padding: 7px 10px; font-size: 13px;
+    background: none; border: none;
+    color: var(--text); cursor: pointer;
+    border-radius: 4px;
+    font-family: inherit;
+  }
+  .dropdown-item:hover { background: var(--hover-bg); }
 
   .btn {
     padding: 6px 12px;
@@ -469,35 +523,38 @@
     padding: 32px 16px; text-align: center;
     color: var(--text-faint); font-size: 13px;
   }
-  .workspace-bar {
-    padding: 10px 14px; margin: 0 0 8px 0;
-    background: var(--surface-2);
-    border: 1px solid var(--border); border-radius: 6px;
-    font-size: 12px; color: var(--text-muted);
-    display: flex; align-items: center; gap: 8px;
-  }
-  .workspace-bar .ws-path {
-    flex: 1; color: var(--text);
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    font-family: ui-monospace, monospace; font-size: 11.5px;
-  }
-  .workspace-bar .ws-none { color: var(--text-faint); font-style: italic; }
 </style>
 </head>
 <body>
 
 <header>
   <h1>FlowSpec <span class="tag">visual → LLM text</span></h1>
-  <input type="text" class="title-input" id="title-input" placeholder="Untitled flow" value="Untitled flow">
+  <div class="title-wrap">
+    <input type="text" class="title-input" id="title-input" placeholder="Untitled flow" value="Untitled flow">
+    <div class="title-meta" id="title-meta">
+      <span class="dirty-dot" id="dirty-dot" title="Unsaved changes" style="display:none;">•</span>
+      <span class="linked-chip" id="linked-chip" style="display:none;">
+        <span class="linked-name" id="linked-name"></span>
+        <button class="linked-unlink" id="linked-unlink" title="Unlink file">×</button>
+      </span>
+    </div>
+  </div>
   <div class="actions">
     <button class="btn icon" id="theme-toggle-btn" title="Toggle dark / light theme">🌙</button>
     <button class="btn" id="output-toggle-btn" title="Open the Spec output tab">📄 Spec</button>
     <button class="btn" id="projects-btn" title="Manage projects — switch, create, rename, delete">📁 Projects</button>
-    <button class="btn" id="save-disk-btn" title="Save project JSON to disk (workspace folder)">💾 Save to disk</button>
-    <button class="btn" id="export-json-btn" title="Download as JSON">Export JSON</button>
-    <button class="btn" id="export-png-btn" title="Export the chart as a PNG image">🖼 PNG</button>
-    <button class="btn" id="import-json-btn" title="Load from JSON">Import JSON</button>
-    <input type="file" id="import-file" style="display:none" accept="application/json,.json">
+    <button class="btn" id="open-btn" title="Open a .flowspec.json file from disk (Cmd/Ctrl+O)">📂 Open…</button>
+    <button class="btn" id="save-btn" title="Save to linked file, or pick a location if none (Cmd/Ctrl+S)">💾 Save</button>
+    <button class="btn" id="save-as-btn" title="Save a copy to a new file (Cmd/Ctrl+Shift+S)">Save As…</button>
+    <div class="dropdown" id="export-dropdown">
+      <button class="btn" id="export-menu-btn" title="Export to another format">⤓ Export ▾</button>
+      <div class="dropdown-menu" id="export-menu">
+        <button class="dropdown-item" data-export="json-copy">JSON copy (.flowspec.json)</button>
+        <button class="dropdown-item" data-export="png">PNG image</button>
+        <button class="dropdown-item" data-export="spec">Spec text (open tab)</button>
+      </div>
+    </div>
+    <input type="file" id="open-file-fallback" style="display:none" accept="application/json,.json">
   </div>
 </header>
 
@@ -578,18 +635,12 @@
       <button class="modal-close" id="modal-close" title="Close">×</button>
     </div>
     <div class="modal-body">
-      <div class="workspace-bar" id="workspace-bar">
-        <span style="font-size:14px;">📂</span>
-        <span style="font-weight:500; color:var(--text);">Workspace:</span>
-        <span class="ws-path" id="ws-path"><span class="ws-none">none — projects save to localStorage only</span></span>
-        <button class="btn" id="ws-pick-btn" style="font-size:11px; padding:4px 10px;">Choose folder…</button>
-        <button class="btn" id="ws-clear-btn" style="font-size:11px; padding:4px 10px; display:none;">Clear</button>
-      </div>
+      <p style="margin:6px 8px 12px; font-size:12px; color:var(--text-muted); line-height:1.45;">
+        Projects live in this browser. Each one can be linked to a <code>.flowspec.json</code> file on disk via <strong>Save</strong> / <strong>Open</strong>.
+      </p>
       <ul class="project-list" id="project-list"></ul>
     </div>
     <div class="modal-footer">
-      <button class="btn" id="open-disk-btn" title="Open a project from a folder on disk">📂 Open from disk…</button>
-      <div style="flex:1;"></div>
       <button class="btn" id="new-blank-btn">+ New (blank)</button>
       <button class="btn primary" id="new-example-btn">+ New (with example)</button>
     </div>
@@ -640,6 +691,8 @@ const state = {
   currentProjectId: null,
   panelCollapsed: false,
   searchHits: new Set(),  // node ids matching active search
+  dirty: false,            // in-memory state differs from last saved file (or no file)
+  loading: false,          // true while bulk-loading a project (suppresses dirty)
 };
 
 function genId(prefix) {
@@ -697,8 +750,16 @@ function save() {
     nextId: state.nextId,
     createdAt: (prev && prev.createdAt) || Date.now(),
     updatedAt: Date.now(),
+    hasLink: prev ? !!prev.hasLink : false,
+    linkName: prev ? (prev.linkName || null) : null,
+    dirty: state.dirty,
   };
   saveWorkspace(ws);
+  // save() is called after every mutation — mark dirty unless we're currently mid-load
+  if (state.loading !== true) {
+    if (!state.dirty) markDirty();
+    else renderLinkedState(); // already dirty, but title/etc may have changed
+  }
 }
 
 function load() {
@@ -710,6 +771,7 @@ function load() {
   state.nodes = p.nodes || [];
   state.edges = p.edges || [];
   state.nextId = p.nextId || 1;
+  state.dirty = !!p.dirty;
   return true;
 }
 
@@ -1631,9 +1693,18 @@ function renderPanel() {
         <p><strong>Collapse this panel</strong> — Click the <span class="kbd">›</span> at the top-right of the panel to hide it for more canvas. Use the icon rail to bring it back or jump to any tab.</p>
         <p><strong>Theme</strong> — <span class="kbd">🌙 / ☀</span> in the header.</p>
         <p style="margin-top:20px; padding-top:14px; border-top:1px solid var(--border);">
-          <strong>Save to disk:</strong> Open <span class="kbd">📁 Projects</span> → <span class="kbd">Choose folder…</span> to pick a workspace. After that, <span class="kbd">💾 Save to disk</span> writes the project as <code>&lt;Workspace&gt;/&lt;Project&gt;/&lt;project&gt;.flowspec.json</code>. Requires Chrome or Edge. Falls back to download otherwise.
+          <strong>Open / Save / Save As</strong> — Each project can be linked to a <code>.flowspec.json</code> file on disk.
+          <span class="kbd">📂 Open…</span> (<span class="kbd">Cmd/Ctrl</span>+<span class="kbd">O</span>) picks a file; that project then "remembers" it.
+          <span class="kbd">💾 Save</span> (<span class="kbd">Cmd/Ctrl</span>+<span class="kbd">S</span>) writes back to the linked file, or asks where to save if none.
+          <span class="kbd">Save As…</span> (<span class="kbd">Cmd/Ctrl</span>+<span class="kbd">Shift</span>+<span class="kbd">S</span>) picks a new location.
+          A <span class="kbd">📎 filename</span> chip next to the title shows the link; click <span class="kbd">×</span> on it to unlink.
+          A <span class="kbd">•</span> means you have changes that aren't on disk yet.
+          In Chrome/Edge this is silent and in-place; Firefox/Safari fall back to download dialogs.
         </p>
         <p style="margin-top:14px; padding-top:14px; border-top:1px solid var(--border);">
+          <strong>Export</strong> — The <span class="kbd">⤓ Export ▾</span> menu makes a copy without changing the link: JSON copy, PNG image, or jump to the Spec text tab.
+        </p>
+        <p>
           <strong>For folder structures:</strong> use Folder + File/Data nodes, connect parents to children, then switch the Spec format to "Folder tree".
         </p>
         <p>
@@ -2266,10 +2337,13 @@ const EXAMPLE_SEED = {
 };
 
 function newProject(withExample = false) {
+  state.loading = true;
   state.currentProjectId = 'proj_' + Date.now();
   state.pan = { x: 0, y: 0 };
+  state.zoom = 1;
   state.undoStack = [];
   state.redoStack = [];
+  state.dirty = false;
   clearSelection();
   if (withExample) {
     state.title = EXAMPLE_SEED.title;
@@ -2283,8 +2357,11 @@ function newProject(withExample = false) {
     state.nextId = 1;
   }
   save();
+  state.loading = false;
+  state.dirty = false;
   document.getElementById('title-input').value = state.title;
   updateUndoRedoButtons();
+  renderLinkedState();
   render();
   closeProjectsModal();
 }
@@ -2292,6 +2369,7 @@ function newProject(withExample = false) {
 function switchProject(id) {
   const ws = loadWorkspace();
   if (!ws.projects[id]) return;
+  state.loading = true;
   const p = ws.projects[id];
   state.currentProjectId = id;
   state.title = p.title || 'Untitled';
@@ -2299,13 +2377,17 @@ function switchProject(id) {
   state.edges = p.edges || [];
   state.nextId = p.nextId || 1;
   state.pan = { x: 0, y: 0 };
+  state.zoom = 1;
   state.undoStack = [];
   state.redoStack = [];
+  state.dirty = !!p.dirty;
   clearSelection();
   ws.currentId = id;
   saveWorkspace(ws);
+  state.loading = false;
   document.getElementById('title-input').value = state.title;
   updateUndoRedoButtons();
+  renderLinkedState();
   render();
   closeProjectsModal();
 }
@@ -2317,8 +2399,9 @@ async function deleteProject(id) {
   if (!confirm(`Delete project "${p.title}"? This cannot be undone.\n\n(Files on disk are NOT deleted — only this in-browser project record.)`)) return;
   delete ws.projects[id];
   saveWorkspace(ws);
-  // Drop the linked-folder handle too
-  try { await dbDel('proj:' + id); } catch(e) {}
+  // Drop the linked-file handle too
+  try { await dbDel('file:' + id); } catch(e) {}
+  try { await dbDel('proj:' + id); } catch(e) {} // cleanup legacy directory handle key
   if (state.currentProjectId === id) {
     const remaining = Object.values(ws.projects).sort((a,b) => (b.updatedAt||0)-(a.updatedAt||0));
     if (remaining.length > 0) {
@@ -2359,7 +2442,7 @@ function formatRelativeDate(ts) {
   return new Date(ts).toLocaleDateString();
 }
 
-async function renderProjectList() {
+function renderProjectList() {
   const ws = loadWorkspace();
   const list = document.getElementById('project-list');
   const projects = Object.values(ws.projects).sort((a,b) => (b.updatedAt||0) - (a.updatedAt||0));
@@ -2367,26 +2450,17 @@ async function renderProjectList() {
     list.innerHTML = '<li class="project-empty">No projects yet. Create one below.</li>';
     return;
   }
-  // Look up linked folder names for each project
-  const linkedNames = {};
-  if (FS_SUPPORTED) {
-    for (const p of projects) {
-      try {
-        const h = await dbGet('proj:' + p.id);
-        if (h) linkedNames[p.id] = h.name;
-      } catch(e) {}
-    }
-  }
   list.innerHTML = projects.map(p => {
     const isCurrent = p.id === state.currentProjectId;
-    const linkedFolder = linkedNames[p.id];
-    const linkedHtml = linkedFolder
-      ? ` · <span class="linked">📂 ${escapeHtml(linkedFolder)}/</span>`
+    const linkedName = p.linkName;
+    const linkedHtml = linkedName
+      ? ` · <span class="linked">📎 ${escapeHtml(linkedName)}</span>`
       : '';
+    const dirtyHtml = p.dirty ? ' <span style="color:var(--accent)">•</span>' : '';
     return `
       <li class="project-item ${isCurrent ? 'current' : ''}" data-id="${p.id}">
         <div class="project-info">
-          <div class="project-name">${escapeHtml(p.title)}${isCurrent ? '<span class="badge">current</span>' : ''}</div>
+          <div class="project-name">${escapeHtml(p.title)}${dirtyHtml}${isCurrent ? '<span class="badge">current</span>' : ''}</div>
           <div class="project-meta">${(p.nodes||[]).length} nodes · ${(p.edges||[]).length} connections · ${formatRelativeDate(p.updatedAt)}${linkedHtml}</div>
         </div>
         <div class="project-actions">
@@ -2412,7 +2486,6 @@ async function renderProjectList() {
 
 function openProjectsModal() {
   renderProjectList();
-  renderWorkspaceBar();
   document.getElementById('projects-modal').classList.add('open');
 }
 function closeProjectsModal() {
@@ -2435,25 +2508,15 @@ function serializeProject() {
     _format: 'flowspec.v1',
   };
 }
-function sanitizeFolderName(name) {
+function sanitizeForFilename(name) {
   return (name || 'untitled').replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim() || 'untitled';
 }
-function projectFilename(title) {
-  return sanitizeFolderName(title).replace(/[^a-z0-9-_ ]+/gi, '-') + '.flowspec.json';
+function suggestedFilename(title) {
+  return sanitizeForFilename(title) + '.flowspec.json';
 }
 
-document.getElementById('export-json-btn').addEventListener('click', () => {
-  const blob = new Blob([JSON.stringify(serializeProject(), null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = projectFilename(state.title);
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-});
-
 // ---------- File System Access API (Chrome/Edge) ----------
-const FS_SUPPORTED = 'showDirectoryPicker' in window && 'showSaveFilePicker' in window;
+const FS_SUPPORTED = 'showOpenFilePicker' in window && 'showSaveFilePicker' in window;
 const DB_NAME = 'flowspec-fs';
 const DB_STORE = 'handles';
 
@@ -2492,153 +2555,21 @@ async function dbDel(key) {
     tx.onerror = () => reject(tx.error);
   });
 }
+async function dbAllKeys() {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(DB_STORE, 'readonly');
+    const req = tx.objectStore(DB_STORE).getAllKeys();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => reject(req.error);
+  });
+}
 
-let workspaceHandle = null;
-
+// Per-project linked file handle (FileSystemFileHandle). Stored as 'file:<projectId>'.
 async function ensurePermission(handle, mode = 'readwrite') {
   if (!handle) return false;
   if ((await handle.queryPermission({ mode })) === 'granted') return true;
   return (await handle.requestPermission({ mode })) === 'granted';
-}
-
-async function loadWorkspaceHandle() {
-  if (!FS_SUPPORTED) return null;
-  try {
-    const h = await dbGet('workspace');
-    workspaceHandle = h || null;
-    return workspaceHandle;
-  } catch(e) { return null; }
-}
-
-async function pickWorkspace() {
-  if (!FS_SUPPORTED) {
-    alert('Your browser doesn\'t support the File System Access API. Use Chrome or Edge for in-place disk saving. You can still use Export/Import JSON.');
-    return;
-  }
-  try {
-    const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
-    workspaceHandle = handle;
-    await dbSet('workspace', handle);
-    await renderWorkspaceBar();
-    setStatus('Workspace set: ' + handle.name);
-  } catch(e) {
-    if (e.name !== 'AbortError') console.warn(e);
-  }
-}
-
-async function clearWorkspace() {
-  workspaceHandle = null;
-  await dbDel('workspace');
-  // Also clear per-project linked dirs since they live under the old workspace
-  const ws = loadWorkspace();
-  for (const id of Object.keys(ws.projects)) {
-    await dbDel('proj:' + id);
-  }
-  await renderWorkspaceBar();
-  setStatus('Workspace cleared.');
-}
-
-async function getOrCreateProjectDir(projectId, title) {
-  if (!workspaceHandle) return null;
-  if (!(await ensurePermission(workspaceHandle, 'readwrite'))) return null;
-  // Reuse linked handle if available
-  let linked = await dbGet('proj:' + projectId);
-  if (linked && await ensurePermission(linked, 'readwrite')) {
-    return linked;
-  }
-  // Create / open by sanitized title
-  const folderName = sanitizeFolderName(title);
-  const dir = await workspaceHandle.getDirectoryHandle(folderName, { create: true });
-  await dbSet('proj:' + projectId, dir);
-  return dir;
-}
-
-async function saveProjectToDisk(opts = {}) {
-  if (!FS_SUPPORTED) {
-    // Fallback: trigger a download
-    document.getElementById('export-json-btn').click();
-    return;
-  }
-  if (!workspaceHandle) {
-    if (opts.silent) return;
-    alert('No workspace folder set. Open Projects → Choose folder… first.');
-    return;
-  }
-  try {
-    const dir = await getOrCreateProjectDir(state.currentProjectId, state.title);
-    if (!dir) {
-      if (!opts.silent) alert('Could not access workspace folder. Permission denied or folder moved.');
-      return;
-    }
-    const fileName = projectFilename(state.title);
-    const fileHandle = await dir.getFileHandle(fileName, { create: true });
-    const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(serializeProject(), null, 2));
-    await writable.close();
-    setStatus(`Saved to ${dir.name}/${fileName}`);
-  } catch(e) {
-    console.warn('Save failed', e);
-    if (!opts.silent) alert('Save failed: ' + e.message);
-  }
-}
-
-async function openProjectFromDisk() {
-  if (!FS_SUPPORTED) {
-    document.getElementById('import-json-btn').click();
-    return;
-  }
-  try {
-    const [fileHandle] = await window.showOpenFilePicker({
-      types: [{
-        description: 'FlowSpec JSON',
-        accept: { 'application/json': ['.json', '.flowspec.json'] },
-      }],
-      multiple: false,
-    });
-    const file = await fileHandle.getFile();
-    const text = await file.text();
-    const data = JSON.parse(text);
-    if (!data.nodes || !Array.isArray(data.nodes)) throw new Error('Invalid FlowSpec file');
-    // Treat as importing into a new project
-    state.currentProjectId = 'proj_' + Date.now();
-    state.title = data.title || file.name.replace(/\.flowspec\.json$/, '').replace(/\.json$/, '');
-    state.nodes = data.nodes;
-    state.edges = data.edges || [];
-    state.nextId = data.nextId || (state.nodes.length + state.edges.length + 1);
-    state.pan = { x: 0, y: 0 };
-    state.zoom = 1;
-    state.undoStack = [];
-    state.redoStack = [];
-    clearSelection();
-    document.getElementById('title-input').value = state.title;
-    save();
-    render();
-    closeProjectsModal();
-    setStatus('Opened from disk: ' + file.name);
-  } catch(e) {
-    if (e.name !== 'AbortError') alert('Could not open: ' + e.message);
-  }
-}
-
-async function renderWorkspaceBar() {
-  const pathEl = document.getElementById('ws-path');
-  const clearBtn = document.getElementById('ws-clear-btn');
-  const pickBtn = document.getElementById('ws-pick-btn');
-  if (!FS_SUPPORTED) {
-    pathEl.innerHTML = '<span class="ws-none">Not supported in this browser — use Chrome/Edge for in-place save</span>';
-    pickBtn.disabled = true;
-    clearBtn.style.display = 'none';
-    return;
-  }
-  if (workspaceHandle) {
-    pathEl.textContent = workspaceHandle.name + '/';
-    clearBtn.style.display = '';
-    pickBtn.textContent = 'Change…';
-  } else {
-    pathEl.innerHTML = '<span class="ws-none">none — projects save to localStorage only</span>';
-    clearBtn.style.display = 'none';
-    pickBtn.textContent = 'Choose folder…';
-  }
 }
 
 function setStatus(msg, durationMs = 3000) {
@@ -2651,10 +2582,258 @@ function setStatus(msg, durationMs = 3000) {
   }, durationMs);
 }
 
-document.getElementById('save-disk-btn').addEventListener('click', () => saveProjectToDisk());
-document.getElementById('ws-pick-btn').addEventListener('click', pickWorkspace);
-document.getElementById('ws-clear-btn').addEventListener('click', clearWorkspace);
-document.getElementById('open-disk-btn').addEventListener('click', openProjectFromDisk);
+// ---------- Linked file + dirty state ----------
+function linkedMeta() {
+  const ws = loadWorkspace();
+  const p = ws.projects[state.currentProjectId];
+  if (!p) return { hasLink: false, name: null };
+  return { hasLink: !!p.hasLink, name: p.linkName || null };
+}
+
+function markDirty() {
+  if (state.dirty) return;
+  state.dirty = true;
+  // Persist dirty flag in workspace
+  const ws = loadWorkspace();
+  const p = ws.projects[state.currentProjectId];
+  if (p) { p.dirty = true; saveWorkspace(ws); }
+  renderLinkedState();
+}
+function clearDirty() {
+  state.dirty = false;
+  const ws = loadWorkspace();
+  const p = ws.projects[state.currentProjectId];
+  if (p) { p.dirty = false; saveWorkspace(ws); }
+  renderLinkedState();
+}
+
+function renderLinkedState() {
+  const { hasLink, name } = linkedMeta();
+  const dotEl = document.getElementById('dirty-dot');
+  const chipEl = document.getElementById('linked-chip');
+  const nameEl = document.getElementById('linked-name');
+  if (dotEl) dotEl.style.display = state.dirty ? '' : 'none';
+  if (chipEl && nameEl) {
+    if (hasLink && name) {
+      nameEl.textContent = name;
+      chipEl.style.display = '';
+    } else {
+      chipEl.style.display = 'none';
+    }
+  }
+  // Update browser tab title too
+  const baseTitle = state.title || 'Untitled flow';
+  document.title = (state.dirty ? '• ' : '') + baseTitle + ' — FlowSpec';
+}
+
+async function setLinkedFile(handle, name) {
+  const ws = loadWorkspace();
+  const p = ws.projects[state.currentProjectId];
+  if (!p) return;
+  if (handle) {
+    await dbSet('file:' + state.currentProjectId, handle);
+    p.hasLink = true;
+    p.linkName = name || handle.name;
+  } else {
+    try { await dbDel('file:' + state.currentProjectId); } catch(e) {}
+    p.hasLink = false;
+    p.linkName = null;
+  }
+  saveWorkspace(ws);
+  renderLinkedState();
+}
+
+async function getLinkedHandle() {
+  try { return await dbGet('file:' + state.currentProjectId); }
+  catch(e) { return null; }
+}
+
+// ---------- Open ----------
+async function openFile() {
+  if (!FS_SUPPORTED) {
+    document.getElementById('open-file-fallback').click();
+    return;
+  }
+  try {
+    const [fileHandle] = await window.showOpenFilePicker({
+      types: [{
+        description: 'FlowSpec project',
+        accept: { 'application/json': ['.json', '.flowspec.json'] },
+      }],
+      multiple: false,
+    });
+    const file = await fileHandle.getFile();
+    const text = await file.text();
+    const data = JSON.parse(text);
+    if (!data.nodes || !Array.isArray(data.nodes)) throw new Error('Not a FlowSpec file');
+    await applyOpenedFile(data, file.name, fileHandle);
+    setStatus('Opened: ' + file.name);
+  } catch(e) {
+    if (e.name !== 'AbortError') alert('Could not open: ' + e.message);
+  }
+}
+
+async function applyOpenedFile(data, filename, fileHandle) {
+  state.loading = true;
+  // Each opened file becomes its own new project
+  state.currentProjectId = 'proj_' + Date.now();
+  state.title = data.title || filename.replace(/\.flowspec\.json$/, '').replace(/\.json$/, '');
+  state.nodes = data.nodes || [];
+  state.edges = data.edges || [];
+  state.nextId = data.nextId || (state.nodes.length + state.edges.length + 1);
+  state.pan = { x: 0, y: 0 };
+  state.zoom = 1;
+  state.undoStack = [];
+  state.redoStack = [];
+  state.dirty = false;
+  clearSelection();
+  document.getElementById('title-input').value = state.title;
+  save();
+  if (fileHandle) {
+    await setLinkedFile(fileHandle, filename);
+  } else {
+    // Fallback path — no handle, but remember the name so we still suggest it
+    const ws = loadWorkspace();
+    const p = ws.projects[state.currentProjectId];
+    if (p) { p.hasLink = false; p.linkName = filename; saveWorkspace(ws); }
+  }
+  state.loading = false;
+  state.dirty = false;
+  renderLinkedState();
+  render();
+  closeProjectsModal();
+}
+
+// ---------- Save ----------
+async function saveFile() {
+  if (!FS_SUPPORTED) { return saveFileAs(); }
+  const handle = await getLinkedHandle();
+  if (!handle) { return saveFileAs(); }
+  if (!(await ensurePermission(handle, 'readwrite'))) {
+    alert('Permission denied for the linked file. Use Save As to choose a new location.');
+    return;
+  }
+  try {
+    const writable = await handle.createWritable();
+    await writable.write(JSON.stringify(serializeProject(), null, 2));
+    await writable.close();
+    clearDirty();
+    setStatus('Saved: ' + handle.name);
+  } catch(e) {
+    console.warn('Save failed', e);
+    alert('Save failed: ' + e.message);
+  }
+}
+
+async function saveFileAs() {
+  if (!FS_SUPPORTED) {
+    // Fallback: trigger a download
+    const blob = new Blob([JSON.stringify(serializeProject(), null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = suggestedFilename(state.title);
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    clearDirty();
+    // Cache the suggested name as link metadata for display, even though no handle exists
+    const ws = loadWorkspace();
+    const p = ws.projects[state.currentProjectId];
+    if (p) { p.hasLink = false; p.linkName = suggestedFilename(state.title); saveWorkspace(ws); }
+    setStatus('Downloaded: ' + suggestedFilename(state.title));
+    return;
+  }
+  try {
+    const handle = await window.showSaveFilePicker({
+      suggestedName: suggestedFilename(state.title),
+      types: [{
+        description: 'FlowSpec project',
+        accept: { 'application/json': ['.flowspec.json', '.json'] },
+      }],
+    });
+    const writable = await handle.createWritable();
+    await writable.write(JSON.stringify(serializeProject(), null, 2));
+    await writable.close();
+    await setLinkedFile(handle, handle.name);
+    clearDirty();
+    setStatus('Saved: ' + handle.name);
+  } catch(e) {
+    if (e.name !== 'AbortError') alert('Save As failed: ' + e.message);
+  }
+}
+
+// ---------- Export menu ----------
+function exportJsonCopy() {
+  const blob = new Blob([JSON.stringify(serializeProject(), null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = suggestedFilename(state.title);
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  setStatus('Exported copy: ' + suggestedFilename(state.title));
+}
+
+// Unlink the current project's file
+document.getElementById('linked-unlink').addEventListener('click', async () => {
+  await setLinkedFile(null);
+  setStatus('Unlinked file from this project.');
+});
+
+// Header buttons
+document.getElementById('open-btn').addEventListener('click', openFile);
+document.getElementById('save-btn').addEventListener('click', saveFile);
+document.getElementById('save-as-btn').addEventListener('click', saveFileAs);
+
+// Open-file fallback for non-FS-API browsers
+document.getElementById('open-file-fallback').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    if (!data.nodes || !Array.isArray(data.nodes)) throw new Error('Not a FlowSpec file');
+    await applyOpenedFile(data, file.name, null);
+    setStatus('Opened: ' + file.name);
+  } catch(err) {
+    alert('Could not open: ' + err.message);
+  }
+  e.target.value = '';
+});
+
+// Export dropdown
+const exportDropdown = document.getElementById('export-dropdown');
+document.getElementById('export-menu-btn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  exportDropdown.classList.toggle('open');
+});
+document.addEventListener('click', (e) => {
+  if (!exportDropdown.contains(e.target)) exportDropdown.classList.remove('open');
+});
+document.querySelectorAll('#export-menu .dropdown-item').forEach(item => {
+  item.addEventListener('click', () => {
+    exportDropdown.classList.remove('open');
+    const what = item.dataset.export;
+    if (what === 'json-copy') exportJsonCopy();
+    else if (what === 'png') exportPng();
+    else if (what === 'spec') {
+      state.panTab = 'spec';
+      applyPanelCollapsed(false);
+      render();
+    }
+  });
+});
+
+// Save / Open keyboard shortcuts
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 's' && (ev.metaKey || ev.ctrlKey)) {
+    ev.preventDefault();
+    if (ev.shiftKey) saveFileAs(); else saveFile();
+  } else if (ev.key === 'o' && (ev.metaKey || ev.ctrlKey)) {
+    ev.preventDefault();
+    openFile();
+  }
+});
 
 // ---------- PNG Export ----------
 async function exportPng() {
@@ -2735,32 +2914,6 @@ async function exportPng() {
   };
   img.src = url;
 }
-document.getElementById('import-json-btn').addEventListener('click', () => {
-  document.getElementById('import-file').click();
-});
-document.getElementById('import-file').addEventListener('change', async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  try {
-    const text = await file.text();
-    const data = JSON.parse(text);
-    if (!data.nodes || !Array.isArray(data.nodes)) throw new Error('Invalid file format');
-    snapshot();
-    state.title = data.title || 'Imported flow';
-    state.nodes = data.nodes;
-    state.edges = data.edges || [];
-    state.nextId = data.nextId || (state.nodes.length + state.edges.length + 1);
-    state.pan = { x: 0, y: 0 };
-    clearSelection();
-    document.getElementById('title-input').value = state.title;
-    save();
-    render();
-  } catch (err) {
-    alert('Could not import: ' + err.message);
-  }
-  e.target.value = '';
-});
-
 document.querySelectorAll('.panel-tab').forEach(t => {
   t.addEventListener('click', () => {
     state.panTab = t.dataset.tab;
@@ -2768,17 +2921,18 @@ document.querySelectorAll('.panel-tab').forEach(t => {
   });
 });
 
-document.getElementById('export-png-btn').addEventListener('click', exportPng);
-
 // ---------- Init ----------
 buildToolbar();
+state.loading = true;
 const loaded = load();
+state.loading = false;
 if (!loaded) {
   newProject(true);
 } else {
   document.getElementById('title-input').value = state.title;
   updateUndoRedoButtons();
   render();
+  renderLinkedState();
 }
 
 // Apply theme button label
@@ -2790,8 +2944,18 @@ try {
   applyPanelCollapsed(c);
 } catch(e) { applyPanelCollapsed(false); }
 
-// Try to restore the workspace handle (if any)
-loadWorkspaceHandle().then(() => renderWorkspaceBar()).catch(() => {});
+// One-time cleanup of obsolete IndexedDB keys (workspace dir handle, per-project dir handles)
+(async function migrateOldFsKeys() {
+  try {
+    await dbDel('workspace');
+    const keys = await dbAllKeys();
+    for (const k of keys) {
+      if (typeof k === 'string' && k.startsWith('proj:')) {
+        await dbDel(k);
+      }
+    }
+  } catch(e) {}
+})();
 
 </script>
 </body>
