@@ -648,6 +648,17 @@
     cursor: crosshair;
   }
   .connect-handle:hover { r: 8; }
+  .waypoint-handle {
+    fill: var(--surface);
+    stroke: var(--accent);
+    stroke-width: 2;
+    cursor: move;
+  }
+  .waypoint-handle:hover { r: 8; }
+  @media (pointer: coarse) {
+    .waypoint-handle { r: 9; }
+    .connect-handle { r: 9; }
+  }
   .connect-preview {
     fill: none; stroke: var(--accent); stroke-width: 2;
     stroke-dasharray: 5 4; pointer-events: none;
@@ -1094,6 +1105,7 @@ const state = {
   dirty: false,            // in-memory state differs from last saved file (or no file)
   loading: false,          // true while bulk-loading a project (suppresses dirty)
   connectDrag: null,       // { sourceId, currentWorldX, currentWorldY, hoverTargetId } when dragging a handle
+  waypointDrag: null,      // { edgeId, idx } while dragging an edge waypoint
   alignGuides: [],         // [{ type: 'v'|'h', value }] in world coords, visible during drag
   clipboard: null,         // { nodes: [...], edges: [...] } from last copy
   contextMenuWorldPoint: null, // world coords where the context menu was opened (for "Paste here")
@@ -1439,6 +1451,59 @@ function renderOverlay() {
   }
 }
 
+function attachWaypointHandle(circle, edgeId, idx) {
+  circle.addEventListener('pointerdown', (ev) => {
+    ev.stopPropagation();
+    pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    snapshot();
+    state.waypointDrag = { edgeId, idx, pointerId: ev.pointerId };
+  });
+  circle.addEventListener('contextmenu', (ev) => {
+    ev.preventDefault(); ev.stopPropagation();
+    showContextMenu(ev.clientX, ev.clientY, [
+      { label: 'Delete waypoint', danger: true, action: () => deleteWaypoint(edgeId, idx) },
+    ]);
+  });
+}
+
+function deleteWaypoint(edgeId, idx) {
+  const e = state.edges.find(x => x.id === edgeId);
+  if (!e || !e.waypoints || idx < 0 || idx >= e.waypoints.length) return;
+  snapshot();
+  e.waypoints.splice(idx, 1);
+  if (e.waypoints.length === 0) delete e.waypoints;
+  save();
+  render();
+}
+
+function addWaypointToEdge(edgeId, worldX, worldY) {
+  const e = state.edges.find(x => x.id === edgeId);
+  if (!e) return;
+  const src = state.nodes.find(n => n.id === e.source);
+  const tgt = state.nodes.find(n => n.id === e.target);
+  if (!src || !tgt) return;
+  snapshot();
+  if (!e.waypoints) e.waypoints = [];
+  // Find which existing polyline segment is closest to the click point; insert before that segment's end
+  const path = [
+    { x: src.x, y: src.y },
+    ...e.waypoints,
+    { x: tgt.x, y: tgt.y },
+  ];
+  let bestIdx = 0, bestDist = Infinity;
+  for (let i = 0; i < path.length - 1; i++) {
+    const d = pointToSegmentDistance(worldX, worldY, path[i].x, path[i].y, path[i+1].x, path[i+1].y);
+    if (d < bestDist) { bestDist = d; bestIdx = i; }
+  }
+  e.waypoints.splice(bestIdx, 0, {
+    x: Math.round(worldX / 10) * 10,
+    y: Math.round(worldY / 10) * 10,
+  });
+  save();
+  selectEdge(edgeId);
+  render();
+}
+
 function attachConnectHandle(circle, sourceNode) {
   circle.addEventListener('pointerdown', (ev) => {
     ev.stopPropagation();
@@ -1635,9 +1700,23 @@ function renderNodes() {
   }
 }
 
-function edgePathAndMid(src, tgt) {
-  // Self-loop: small arc on the top-right of the node
-  if (src === tgt) {
+// Clip a target point to the boundary of a node's bounding box
+function clipBoundsToward(node, toward) {
+  const b = nodeBounds(node);
+  const dx = toward.x - b.cx;
+  const dy = toward.y - b.cy;
+  if (dx === 0 && dy === 0) return { x: b.cx, y: b.cy };
+  const hw = b.w/2 + 2, hh = b.h/2 + 2;
+  const sx = dx !== 0 ? hw / Math.abs(dx) : Infinity;
+  const sy = dy !== 0 ? hh / Math.abs(dy) : Infinity;
+  const s = Math.min(sx, sy);
+  return { x: b.cx + dx * s, y: b.cy + dy * s };
+}
+
+function edgePathAndMid(src, tgt, edge) {
+  const wps = (edge && edge.waypoints) || [];
+  // Self-loop with no waypoints: small arc
+  if (src === tgt && wps.length === 0) {
     const b = nodeBounds(src);
     const startX = b.cx + b.w * 0.25;
     const startY = b.cy - b.h / 2;
@@ -1647,17 +1726,60 @@ function edgePathAndMid(src, tgt) {
     const ctrlY = b.cy - b.h / 2 - 36;
     return {
       d: `M ${startX} ${startY} Q ${ctrlX} ${ctrlY} ${endX} ${endY}`,
-      mx: ctrlX,
-      my: ctrlY,
+      mx: ctrlX, my: ctrlY,
+      points: [{x: startX, y: startY}, {x: endX, y: endY}],
     };
   }
-  const p1 = edgeStart(src, tgt);
-  const p2 = edgePoint(src, tgt);
-  return {
-    d: `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`,
-    mx: (p1.x + p2.x) / 2,
-    my: (p1.y + p2.y) / 2,
-  };
+  // Straight edge, no waypoints
+  if (wps.length === 0) {
+    const p1 = edgeStart(src, tgt);
+    const p2 = edgePoint(src, tgt);
+    return {
+      d: `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`,
+      mx: (p1.x + p2.x) / 2,
+      my: (p1.y + p2.y) / 2,
+      points: [p1, p2],
+    };
+  }
+  // Polyline through waypoints — clip endpoints against node bounds toward
+  // the first / last waypoint respectively
+  const firstWp = wps[0];
+  const lastWp = wps[wps.length - 1];
+  const p1 = clipBoundsToward(src, firstWp);
+  const p2 = clipBoundsToward(tgt, lastWp);
+  let d = `M ${p1.x} ${p1.y}`;
+  for (const wp of wps) d += ` L ${wp.x} ${wp.y}`;
+  d += ` L ${p2.x} ${p2.y}`;
+  // Midpoint along total polyline length
+  const points = [p1, ...wps, p2];
+  let total = 0;
+  const segs = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    const len = Math.hypot(points[i+1].x - points[i].x, points[i+1].y - points[i].y);
+    segs.push(len); total += len;
+  }
+  let target = total / 2, acc = 0;
+  let mx = points[0].x, my = points[0].y;
+  for (let i = 0; i < segs.length; i++) {
+    if (acc + segs[i] >= target) {
+      const t = segs[i] > 0 ? (target - acc) / segs[i] : 0;
+      mx = points[i].x + (points[i+1].x - points[i].x) * t;
+      my = points[i].y + (points[i+1].y - points[i].y) * t;
+      break;
+    }
+    acc += segs[i];
+  }
+  return { d, mx, my, points };
+}
+
+function pointToSegmentDistance(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const lengthSq = dx * dx + dy * dy;
+  if (lengthSq === 0) return Math.hypot(px - x1, py - y1);
+  let t = ((px - x1) * dx + (py - y1) * dy) / lengthSq;
+  t = Math.max(0, Math.min(1, t));
+  const cx = x1 + t * dx, cy = y1 + t * dy;
+  return Math.hypot(px - cx, py - cy);
 }
 
 function renderEdges() {
@@ -1667,7 +1789,7 @@ function renderEdges() {
     const tgt = state.nodes.find(n => n.id === e.target);
     if (!src || !tgt) continue;
     const isSel = state.selectedEdgeId === e.id;
-    const { d: path, mx, my } = edgePathAndMid(src, tgt);
+    const { d: path, mx, my } = edgePathAndMid(src, tgt, e);
     const hit = el('path', { class: 'edge-hit', d: path, 'data-id': e.id });
     // Edge style: dashed / dotted via stroke-dasharray
     const style = e.style || 'solid';
@@ -1721,6 +1843,19 @@ function renderEdges() {
       });
       edgesLayer.appendChild(bg);
       edgesLayer.appendChild(text);
+    }
+
+    // Waypoint handles (only when the edge is selected)
+    if (isSel && e.waypoints && e.waypoints.length > 0) {
+      e.waypoints.forEach((wp, idx) => {
+        const handle = el('circle', {
+          class: 'waypoint-handle',
+          cx: wp.x, cy: wp.y, r: 6,
+          'data-edge': e.id, 'data-idx': idx,
+        });
+        attachWaypointHandle(handle, e.id, idx);
+        edgesLayer.appendChild(handle);
+      });
     }
   }
 }
@@ -1902,6 +2037,20 @@ document.addEventListener('pointermove', (ev) => {
     updatePinch();
     return;
   }
+  // Waypoint drag in progress
+  if (state.waypointDrag) {
+    const wp = worldPoint(ev);
+    const e = state.edges.find(x => x.id === state.waypointDrag.edgeId);
+    if (e && e.waypoints) {
+      const w = e.waypoints[state.waypointDrag.idx];
+      if (w) {
+        w.x = Math.round(wp.x / 10) * 10;
+        w.y = Math.round(wp.y / 10) * 10;
+        renderEdges();
+      }
+    }
+    return;
+  }
   // Connect-drag in progress
   if (state.connectDrag) {
     const wp = worldPoint(ev);
@@ -2022,6 +2171,13 @@ function onPointerEnd(ev) {
   pointers.delete(ev.pointerId);
   // Cancel any pending long-press
   cancelLongPress();
+  // Waypoint drag release
+  if (state.waypointDrag) {
+    state.waypointDrag = null;
+    save();
+    render();
+    return;
+  }
   // Connect-drag release: create edge if dropped on a node, otherwise cancel
   if (state.connectDrag) {
     const cd = state.connectDrag;
@@ -2495,7 +2651,9 @@ function menuItemsForNode(nodeId) {
   return items;
 }
 function menuItemsForEdge(edgeId) {
-  return [
+  const e = state.edges.find(x => x.id === edgeId);
+  const hasWaypoints = e && e.waypoints && e.waypoints.length > 0;
+  const items = [
     { label: 'Edit label', action: () => {
       selectEdge(edgeId);
       state.panTab = 'properties';
@@ -2503,12 +2661,26 @@ function menuItemsForEdge(edgeId) {
       render();
     }},
     'sep',
-    { label: 'Delete connection', danger: true, action: () => {
-      state.selectedEdgeId = edgeId;
-      state.selectedNodeIds.clear();
-      deleteSelected();
+    { label: 'Add waypoint here', action: () => {
+      const wp = state.contextMenuWorldPoint;
+      if (wp) addWaypointToEdge(edgeId, wp.x, wp.y);
     }},
   ];
+  if (hasWaypoints) {
+    items.push({ label: 'Clear waypoints', action: () => {
+      snapshot();
+      delete e.waypoints;
+      save();
+      render();
+    }});
+  }
+  items.push('sep');
+  items.push({ label: 'Delete connection', danger: true, action: () => {
+    state.selectedEdgeId = edgeId;
+    state.selectedNodeIds.clear();
+    deleteSelected();
+  }});
+  return items;
 }
 function menuItemsForCanvas() {
   const items = [];
@@ -2561,6 +2733,8 @@ function cancelOngoingOperations() {
   if (state.drag) state.drag = null;
   if (state.marquee) state.marquee = null;
   if (state.isPanning) { state.isPanning = false; state.panStart = null; }
+  if (state.waypointDrag) state.waypointDrag = null;
+  if (state.connectDrag) state.connectDrag = null;
 }
 let pinch = null; // { startDist, startZoom, startMidWorld }
 
