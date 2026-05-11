@@ -2,6 +2,18 @@
 
 All notable changes to FlowSpec. Format roughly follows [Keep a Changelog](https://keepachangelog.com/). Versioning is loose pre-1.0 — minor bumps for feature batches, patch bumps for fixes.
 
+## [0.11.0] — 2026-05-11
+
+### Added
+- **Frames are now multi-selectable**, alongside nodes
+- **Cmd/Ctrl + A** now selects all nodes AND all frames
+- **Marquee select** (drag on empty canvas) now picks up frames whose center is inside the box, in addition to nodes
+- **Shift-click a frame** to toggle it in/out of the current selection (matches the existing shift-click for nodes)
+- **Delete / Backspace** now deletes every selected frame (was already true for the toolbar button)
+
+### Changed
+- Internal: `state.selectedFrameId` (single id) → `state.selectedFrameIds` (Set). All call sites updated; Properties panel still shows the dedicated single-frame view only when exactly one frame is selected and nothing else
+
 ## [0.10.5] — 2026-05-11
 
 ### Fixed

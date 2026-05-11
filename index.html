@@ -1281,7 +1281,7 @@
 // =============================================================
 // FlowSpec — visual flowchart builder with LLM-friendly text out
 // =============================================================
-const FLOWSPEC_VERSION = '0.10.5';
+const FLOWSPEC_VERSION = '0.11.0';
 
 const NODE_TYPES = {
   start:    { label: 'Start',    color: '#c0dd97', stroke: '#3b6d11', text: '#173404', shape: 'pill',    hint: 'Where the flow begins. Typically one per chart.' },
@@ -1305,7 +1305,7 @@ const state = {
   frames: [],                  // labeled containers behind nodes
   selectedNodeIds: new Set(),  // multi-select for nodes
   selectedEdgeId: null,        // edges are single-select only
-  selectedFrameId: null,       // single-select frame
+  selectedFrameIds: new Set(), // multi-select frames
   frameDrag: null,             // { frameId, mode: 'move'|'resize', anchor, ... }
   mode: 'select',     // 'select' | 'connect' | 'pan'
   connectSource: null,
@@ -1442,7 +1442,7 @@ function deserialize(s) {
   // Drop selections that may reference removed items
   state.selectedNodeIds.clear();
   state.selectedEdgeId = null;
-  state.selectedFrameId = null;
+  state.selectedFrameIds.clear();
 }
 function snapshot() {
   const cur = serialize();
@@ -1602,7 +1602,7 @@ function render() {
   renderOverlay();
   renderPanel();
 
-  const hasSel = state.selectedNodeIds.size > 0 || state.selectedEdgeId || state.selectedFrameId;
+  const hasSel = state.selectedNodeIds.size > 0 || state.selectedEdgeId || state.selectedFrameIds.size > 0;
   document.getElementById('delete-btn').disabled = !hasSel;
   document.getElementById('connect-btn').classList.toggle('active', state.mode === 'connect');
   document.getElementById('pan-btn').classList.toggle('active', state.mode === 'pan');
@@ -2031,7 +2031,7 @@ function hexWithAlpha(hex, alpha) {
 function renderFrames() {
   framesLayer.innerHTML = '';
   for (const f of state.frames) {
-    const isSel = state.selectedFrameId === f.id;
+    const isSel = state.selectedFrameIds.has(f.id);
     const stroke = f.color || '#888780';
     const fill = (f.color && hexWithAlpha(f.color, 0.10)) || 'rgba(150,150,150,0.06)';
     const rect = el('rect', {
@@ -2093,10 +2093,18 @@ function attachFrameHandlers(rect, frame) {
       startPan(ev);
       return;
     }
-    // Select frame, clear node/edge selection
-    state.selectedFrameId = frame.id;
-    state.selectedNodeIds.clear();
-    state.selectedEdgeId = null;
+    // Selection: shift-click toggles, plain click replaces
+    if (ev.shiftKey) {
+      if (state.selectedFrameIds.has(frame.id)) state.selectedFrameIds.delete(frame.id);
+      else state.selectedFrameIds.add(frame.id);
+    } else {
+      if (!state.selectedFrameIds.has(frame.id)) {
+        state.selectedFrameIds.clear();
+        state.selectedFrameIds.add(frame.id);
+      }
+      state.selectedNodeIds.clear();
+      state.selectedEdgeId = null;
+    }
     // Children inside the frame's current bounds move with it
     const childIds = state.nodes
       .filter(n => n.x >= frame.x && n.x <= frame.x + frame.w
@@ -2146,7 +2154,8 @@ function attachFrameCornerHandle(rect, frame, anchor) {
 function menuItemsForFrame(frameId) {
   return [
     { label: 'Edit properties', action: () => {
-      state.selectedFrameId = frameId;
+      state.selectedFrameIds.clear();
+      state.selectedFrameIds.add(frameId);
       state.selectedNodeIds.clear();
       state.selectedEdgeId = null;
       state.panTab = 'properties';
@@ -2157,7 +2166,7 @@ function menuItemsForFrame(frameId) {
     { label: 'Delete frame', danger: true, action: () => {
       snapshot();
       state.frames = state.frames.filter(f => f.id !== frameId);
-      if (state.selectedFrameId === frameId) state.selectedFrameId = null;
+      state.selectedFrameIds.delete(frameId);
       save();
       render();
     }},
@@ -2178,7 +2187,8 @@ function addFrame() {
     w, h,
   };
   state.frames.push(frame);
-  state.selectedFrameId = frame.id;
+  state.selectedFrameIds.clear();
+  state.selectedFrameIds.add(frame.id);
   state.selectedNodeIds.clear();
   state.selectedEdgeId = null;
   state.panTab = 'properties';
@@ -2420,9 +2430,9 @@ svg.addEventListener('pointerdown', (ev) => {
   if (!ev.shiftKey) {
     state.selectedNodeIds.clear();
     state.selectedEdgeId = null;
-    state.selectedFrameId = null;
+    state.selectedFrameIds.clear();
   }
-  state.marquee = { x1: wp.x, y1: wp.y, x2: wp.x, y2: wp.y, additive: ev.shiftKey, baseSelection: new Set(state.selectedNodeIds) };
+  state.marquee = { x1: wp.x, y1: wp.y, x2: wp.x, y2: wp.y, additive: ev.shiftKey, baseSelection: new Set(state.selectedNodeIds), baseFrameSelection: new Set(state.selectedFrameIds) };
   render();
 });
 
@@ -2611,8 +2621,19 @@ document.addEventListener('pointermove', (ev) => {
       }
     }
     state.selectedNodeIds = hits;
+    // Frames: include if center is inside marquee
+    const frameHits = new Set(m.additive ? m.baseFrameSelection : []);
+    for (const f of state.frames) {
+      const fcx = f.x + f.w / 2;
+      const fcy = f.y + f.h / 2;
+      if (fcx >= minX && fcx <= maxX && fcy >= minY && fcy <= maxY) {
+        frameHits.add(f.id);
+      }
+    }
+    state.selectedFrameIds = frameHits;
     renderOverlay();
     renderNodes();
+    renderFrames();
     return;
   }
 });
@@ -2747,7 +2768,7 @@ document.addEventListener('keydown', (ev) => {
     return;
   }
   if (ev.key === 'Delete' || ev.key === 'Backspace') {
-    if (state.selectedNodeIds.size > 0 || state.selectedEdgeId || state.selectedFrameId) deleteSelected();
+    if (state.selectedNodeIds.size > 0 || state.selectedEdgeId || state.selectedFrameIds.size > 0) deleteSelected();
   } else if (ev.key === 'Escape') {
     if (state.searchHits.size > 0 && typeof closeSearch === 'function') {
       closeSearch();
@@ -2772,6 +2793,7 @@ document.addEventListener('keydown', (ev) => {
     if (idx < types.length) addNode(types[idx]);
   } else if (ev.key === 'a' && (ev.metaKey || ev.ctrlKey)) {
     state.selectedNodeIds = new Set(state.nodes.map(n => n.id));
+    state.selectedFrameIds = new Set(state.frames.map(f => f.id));
     state.selectedEdgeId = null;
     render();
     ev.preventDefault();
@@ -2837,24 +2859,24 @@ function selectNode(id) {
   state.selectedNodeIds.clear();
   state.selectedNodeIds.add(id);
   state.selectedEdgeId = null;
-  state.selectedFrameId = null;
+  state.selectedFrameIds.clear();
   state.panTab = 'properties';
   render();
 }
 function selectEdge(id) {
   state.selectedNodeIds.clear();
   state.selectedEdgeId = id;
-  state.selectedFrameId = null;
+  state.selectedFrameIds.clear();
   state.panTab = 'properties';
   render();
 }
 function clearSelection() {
   state.selectedNodeIds.clear();
   state.selectedEdgeId = null;
-  state.selectedFrameId = null;
+  state.selectedFrameIds.clear();
 }
 function deleteSelected() {
-  if (state.selectedNodeIds.size === 0 && !state.selectedEdgeId && !state.selectedFrameId) return;
+  if (state.selectedNodeIds.size === 0 && !state.selectedEdgeId && state.selectedFrameIds.size === 0) return;
   snapshot();
   if (state.selectedNodeIds.size > 0) {
     const ids = state.selectedNodeIds;
@@ -2864,8 +2886,8 @@ function deleteSelected() {
   if (state.selectedEdgeId) {
     state.edges = state.edges.filter(e => e.id !== state.selectedEdgeId);
   }
-  if (state.selectedFrameId) {
-    state.frames = state.frames.filter(f => f.id !== state.selectedFrameId);
+  if (state.selectedFrameIds.size > 0) {
+    state.frames = state.frames.filter(f => !state.selectedFrameIds.has(f.id));
   }
   clearSelection();
   save();
@@ -3895,11 +3917,13 @@ function renderPanel() {
 
   const numNodes = state.selectedNodeIds.size;
   const hasEdge = !!state.selectedEdgeId;
-  const hasFrame = !!state.selectedFrameId;
+  const numFrames = state.selectedFrameIds.size;
+  const hasFrame = numFrames > 0;
 
-  // Frame selected: show frame properties
-  if (hasFrame && numNodes === 0 && !hasEdge) {
-    const f = state.frames.find(x => x.id === state.selectedFrameId);
+  // Exactly one frame selected (and nothing else): show frame properties
+  if (numFrames === 1 && numNodes === 0 && !hasEdge) {
+    const onlyFrameId = state.selectedFrameIds.values().next().value;
+    const f = state.frames.find(x => x.id === onlyFrameId);
     if (!f) return;
     c.innerHTML = `
       <div class="field">
@@ -3949,8 +3973,8 @@ function renderPanel() {
     }
     document.getElementById('f-frame-delete').addEventListener('click', () => {
       snapshot();
-      state.frames = state.frames.filter(x => x.id !== state.selectedFrameId);
-      state.selectedFrameId = null;
+      state.frames = state.frames.filter(x => x.id !== onlyFrameId);
+      state.selectedFrameIds.clear();
       save();
       render();
     });
