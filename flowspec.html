@@ -1,15 +1,86 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FlowSpec — Visual flowchart → LLM-friendly text</title>
+<script>
+  // Apply saved theme before CSS paints to avoid flash
+  try {
+    const t = localStorage.getItem('flowspec.theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', t);
+  } catch(e) {}
+</script>
 <style>
+  /* ---------- Theme variables ---------- */
+  :root, [data-theme="dark"] {
+    --bg:           #1a1a18;
+    --surface:      #232321;
+    --surface-2:    #2c2c2a;
+    --surface-3:    #1a1a18;
+    --text:         #e8e5dc;
+    --text-muted:   #9a9893;
+    --text-faint:   #6a6864;
+    --border:       #3a3a37;
+    --border-light: #2c2c2a;
+    --accent:       #c0dd97;
+    --accent-text:  #1a1a18;
+    --canvas-bg:    #1f1f1d;
+    --canvas-dot:   #33332f;
+    --field-bg:     #2c2c2a;
+    --field-bg-focus:#1a1a18;
+    --hover-bg:     #2c2c2a;
+    --kbd-bg:       #2c2c2a;
+    --danger-text:  #f0a3a3;
+    --danger-border:#5a2929;
+    --danger-bg:    #3a1f1f;
+    --output-bg:    #131311;
+    --output-head:  #0d0d0c;
+    --output-text:  #e8e5dc;
+    --output-desc:  #b4b2a9;
+    --output-btn:   #2c2c2a;
+    --output-btn-h: #3a3a37;
+    --node-stroke-default: #888780;
+    --shadow:       0 8px 32px rgba(0,0,0,0.5);
+    --modal-overlay:rgba(0,0,0,0.6);
+  }
+  [data-theme="light"] {
+    --bg:           #f7f6f1;
+    --surface:      #ffffff;
+    --surface-2:    #fafaf7;
+    --surface-3:    #f1efe8;
+    --text:         #2c2c2a;
+    --text-muted:   #5f5e5a;
+    --text-faint:   #888780;
+    --border:       #e8e5dc;
+    --border-light: #d3d1c7;
+    --accent:       #2c2c2a;
+    --accent-text:  #ffffff;
+    --canvas-bg:    #fafaf7;
+    --canvas-dot:   #e0ddd2;
+    --field-bg:     #fafaf7;
+    --field-bg-focus:#ffffff;
+    --hover-bg:     #fafaf7;
+    --kbd-bg:       #f1efe8;
+    --danger-text:  #791f1f;
+    --danger-border:#f0caca;
+    --danger-bg:    #fceaea;
+    --output-bg:    #2c2c2a;
+    --output-head:  #1f1f1d;
+    --output-text:  #e8e5dc;
+    --output-desc:  #b4b2a9;
+    --output-btn:   #444441;
+    --output-btn-h: #5f5e5a;
+    --node-stroke-default: #888780;
+    --shadow:       0 8px 32px rgba(0,0,0,0.15);
+    --modal-overlay:rgba(44, 44, 42, 0.4);
+  }
+
   * { box-sizing: border-box; }
   html, body {
     margin: 0; padding: 0; height: 100%;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: #f7f6f1; color: #2c2c2a;
+    background: var(--bg); color: var(--text);
     overflow: hidden;
   }
   body { display: flex; flex-direction: column; }
@@ -17,53 +88,60 @@
   header {
     display: flex; align-items: center; gap: 12px;
     padding: 10px 16px;
-    background: #fff; border-bottom: 1px solid #e8e5dc;
+    background: var(--surface); border-bottom: 1px solid var(--border);
   }
   header h1 {
     font-size: 14px; font-weight: 600; margin: 0;
-    color: #2c2c2a; letter-spacing: -0.01em;
+    color: var(--text); letter-spacing: -0.01em;
   }
-  header h1 .tag { color: #888780; font-weight: 400; margin-left: 6px; font-size: 12px; }
+  header h1 .tag { color: var(--text-faint); font-weight: 400; margin-left: 6px; font-size: 12px; }
   header .title-input {
     flex: 1; max-width: 420px;
     padding: 6px 10px;
-    border: 1px solid #e8e5dc; border-radius: 6px;
-    font-size: 13px; background: #fafaf7;
+    border: 1px solid var(--border); border-radius: 6px;
+    font-size: 13px; background: var(--field-bg); color: var(--text);
     font-family: inherit;
   }
-  header .title-input:focus { outline: none; border-color: #888780; background: #fff; }
-  header .actions { display: flex; gap: 6px; margin-left: auto; }
+  header .title-input:focus { outline: none; border-color: var(--text-faint); background: var(--field-bg-focus); }
+  header .actions { display: flex; gap: 6px; margin-left: auto; flex-wrap: wrap; }
 
   .btn {
     padding: 6px 12px;
-    border: 1px solid #d3d1c7; border-radius: 6px;
-    background: #fff; color: #2c2c2a;
+    border: 1px solid var(--border-light); border-radius: 6px;
+    background: var(--surface); color: var(--text);
     font-size: 13px; cursor: pointer;
     font-family: inherit;
     transition: background 0.1s, border-color 0.1s;
   }
-  .btn:hover { background: #fafaf7; border-color: #888780; }
+  .btn:hover { background: var(--hover-bg); border-color: var(--text-faint); }
   .btn:active { transform: scale(0.98); }
-  .btn.primary { background: #2c2c2a; color: #fff; border-color: #2c2c2a; }
-  .btn.primary:hover { background: #444441; }
-  .btn.active { background: #2c2c2a; color: #fff; border-color: #2c2c2a; }
-  .btn.danger { color: #791f1f; border-color: #f0caca; }
-  .btn.danger:hover { background: #fceaea; }
+  .btn.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  .btn.primary:hover { background: var(--accent); opacity: 0.9; }
+  .btn.active { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  .btn.danger { color: var(--danger-text); border-color: var(--danger-border); }
+  .btn.danger:hover { background: var(--danger-bg); }
   .btn.icon { padding: 6px 8px; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
   .toolbar {
     display: flex; align-items: center; gap: 6px;
     padding: 8px 12px;
-    background: #fff; border-bottom: 1px solid #e8e5dc;
+    background: var(--surface); border-bottom: 1px solid var(--border);
     flex-wrap: wrap;
   }
-  .toolbar .group { display: flex; gap: 4px; padding-right: 10px; border-right: 1px solid #e8e5dc; }
+  .toolbar .group { display: flex; gap: 4px; padding-right: 10px; border-right: 1px solid var(--border); }
   .toolbar .group:last-child { border-right: none; }
   .toolbar .add-node-btn {
     display: inline-flex; align-items: center; gap: 6px;
     font-size: 12px;
   }
   .toolbar .add-node-btn .dot { width: 10px; height: 10px; border-radius: 2px; }
+  .zoom-display {
+    font-size: 11px; color: var(--text-muted);
+    min-width: 42px; text-align: center;
+    padding: 0 4px;
+    font-variant-numeric: tabular-nums;
+  }
 
   main {
     flex: 1; display: flex; min-height: 0;
@@ -71,220 +149,288 @@
 
   #canvas-wrap {
     flex: 1; position: relative; overflow: hidden;
-    background: #fafaf7;
+    background: var(--canvas-bg);
     background-image:
-      radial-gradient(circle at 1px 1px, #e0ddd2 1px, transparent 0);
+      radial-gradient(circle at 1px 1px, var(--canvas-dot) 1px, transparent 0);
     background-size: 20px 20px;
   }
-  #canvas { width: 100%; height: 100%; cursor: default; }
+  #canvas { width: 100%; height: 100%; cursor: default; display: block; }
   #canvas.connecting { cursor: crosshair; }
   #canvas.pan-ready { cursor: grab; }
   #canvas.panning { cursor: grabbing; }
+  #canvas.zooming { cursor: zoom-in; }
   .marquee-rect {
-    fill: rgba(44, 44, 42, 0.06);
-    stroke: #2c2c2a;
+    fill: rgba(192, 221, 151, 0.10);
+    stroke: var(--accent);
     stroke-width: 1;
     stroke-dasharray: 4 3;
     pointer-events: none;
   }
   #canvas-wrap .hint {
     position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
-    background: rgba(44,44,42,0.9); color: #fff;
+    background: rgba(0,0,0,0.85); color: #fff;
     padding: 6px 14px; border-radius: 6px;
     font-size: 12px; pointer-events: none;
     opacity: 0; transition: opacity 0.2s;
+    z-index: 5;
   }
   #canvas-wrap .hint.show { opacity: 1; }
+  #canvas-wrap .search-box {
+    position: absolute; top: 12px; right: 12px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; padding: 4px;
+    display: none; align-items: center; gap: 4px;
+    box-shadow: var(--shadow); z-index: 10;
+    width: 280px;
+  }
+  #canvas-wrap .search-box.open { display: flex; }
+  #canvas-wrap .search-box input {
+    flex: 1; padding: 5px 8px; font-size: 13px;
+    background: var(--field-bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 4px;
+    font-family: inherit; outline: none;
+  }
+  #canvas-wrap .search-box input:focus { border-color: var(--text-faint); }
+  #canvas-wrap .search-results {
+    max-height: 200px; overflow-y: auto;
+    margin-top: 4px;
+  }
+  #canvas-wrap .search-result {
+    padding: 6px 10px; font-size: 12px;
+    color: var(--text); cursor: pointer;
+    border-radius: 4px;
+  }
+  #canvas-wrap .search-result:hover { background: var(--hover-bg); }
+  #canvas-wrap .search-result .type { color: var(--text-faint); margin-left: 6px; font-size: 11px; }
 
   aside.panel {
-    width: 280px; min-width: 280px;
-    background: #fff; border-left: 1px solid #e8e5dc;
+    width: 320px; min-width: 320px;
+    background: var(--surface); border-left: 1px solid var(--border);
     display: flex; flex-direction: column;
     overflow: hidden;
+    transition: width 0.18s ease, min-width 0.18s ease;
+  }
+  aside.panel.collapsed { width: 44px; min-width: 44px; }
+  aside.panel.collapsed .panel-header-row,
+  aside.panel.collapsed .panel-content { display: none; }
+  aside.panel:not(.collapsed) .panel-collapsed-rail { display: none; }
+
+  .panel-header-row {
+    display: flex; align-items: stretch;
+    border-bottom: 1px solid var(--border);
   }
   .panel-tabs {
-    display: flex; border-bottom: 1px solid #e8e5dc;
+    flex: 1; display: flex; min-width: 0;
   }
   .panel-tab {
     flex: 1; padding: 10px 12px;
     background: none; border: none;
-    font-size: 12px; font-weight: 500; color: #888780;
+    font-size: 12px; font-weight: 500; color: var(--text-faint);
     cursor: pointer; font-family: inherit;
     border-bottom: 2px solid transparent;
     transition: color 0.1s, border-color 0.1s;
+    white-space: nowrap;
   }
-  .panel-tab.active { color: #2c2c2a; border-bottom-color: #2c2c2a; }
-  .panel-tab:hover { color: #444441; }
+  .panel-tab.active { color: var(--text); border-bottom-color: var(--text); }
+  .panel-tab:hover { color: var(--text); }
+  .panel-collapse-btn {
+    background: none; border: none; padding: 0 12px;
+    color: var(--text-faint); cursor: pointer;
+    font-size: 16px; line-height: 1;
+    border-left: 1px solid var(--border);
+    font-family: inherit;
+  }
+  .panel-collapse-btn:hover { color: var(--text); background: var(--hover-bg); }
+
+  .panel-collapsed-rail {
+    display: flex; flex-direction: column;
+    padding: 6px 4px; gap: 4px;
+    align-items: stretch;
+  }
+  .panel-collapsed-rail button {
+    background: none; border: 1px solid transparent;
+    padding: 8px 0; border-radius: 6px;
+    color: var(--text-muted); cursor: pointer;
+    font-size: 16px; line-height: 1;
+    font-family: inherit;
+  }
+  .panel-collapsed-rail button:hover { background: var(--hover-bg); color: var(--text); }
+  .panel-collapsed-rail .rail-tab.active { background: var(--surface-3); color: var(--text); }
+  .panel-collapsed-rail #rail-expand {
+    border-bottom: 1px solid var(--border);
+    border-radius: 0;
+    margin-bottom: 4px;
+  }
+
   .panel-content {
     flex: 1; overflow-y: auto;
     padding: 14px;
+  }
+  .panel-content.spec-mode {
+    display: flex; flex-direction: column;
+    padding: 0; overflow: hidden;
+  }
+  .spec-head {
+    display: flex; align-items: center; gap: 6px;
+    padding: 8px 10px;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+    flex: 0 0 auto; flex-wrap: wrap;
+  }
+  .spec-head select {
+    flex: 1; min-width: 0;
+    padding: 5px 8px; font-size: 12px;
+    background: var(--field-bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 4px;
+    font-family: inherit;
+  }
+  .spec-head .btn { padding: 4px 10px; font-size: 12px; }
+  .spec-desc {
+    padding: 8px 12px;
+    font-size: 11.5px; line-height: 1.45;
+    color: var(--text-muted);
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex: 0 0 auto;
+  }
+  .spec-desc strong { color: var(--text); font-weight: 500; }
+  .spec-pre {
+    flex: 1; margin: 0; padding: 12px 14px;
+    overflow: auto;
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+    font-size: 12px; line-height: 1.55;
+    white-space: pre-wrap; word-break: break-word;
+    color: var(--text);
+    background: var(--surface-3);
   }
 
   .field { margin-bottom: 12px; }
   .field label {
     display: block; font-size: 11px; font-weight: 500;
-    color: #5f5e5a; margin-bottom: 4px;
+    color: var(--text-muted); margin-bottom: 4px;
     text-transform: uppercase; letter-spacing: 0.04em;
   }
   .field input, .field select, .field textarea {
     width: 100%; padding: 7px 10px;
-    border: 1px solid #e8e5dc; border-radius: 6px;
+    border: 1px solid var(--border); border-radius: 6px;
     font-size: 13px; font-family: inherit;
-    background: #fafaf7;
+    background: var(--field-bg); color: var(--text);
   }
   .field input:focus, .field select:focus, .field textarea:focus {
-    outline: none; border-color: #888780; background: #fff;
+    outline: none; border-color: var(--text-faint); background: var(--field-bg-focus);
   }
-  .field textarea { resize: vertical; min-height: 60px; }
-  .field .help { font-size: 11px; color: #888780; margin-top: 4px; }
+  .field textarea { resize: vertical; min-height: 80px; line-height: 1.4; }
+  .field .help { font-size: 11px; color: var(--text-faint); margin-top: 4px; line-height: 1.4; }
+  .field .row { display: grid; gap: 6px; }
+  .field .row.cols-2 { grid-template-columns: 1fr 1fr; }
+  .field .row.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
 
   .empty-state {
-    color: #888780; font-size: 13px; line-height: 1.5;
+    color: var(--text-muted); font-size: 13px; line-height: 1.5;
     padding: 20px 4px;
   }
-  .empty-state strong { color: #2c2c2a; font-weight: 500; }
+  .empty-state strong { color: var(--text); font-weight: 500; }
   .empty-state .kbd {
     display: inline-block;
     padding: 1px 5px;
-    background: #f1efe8; border: 1px solid #d3d1c7;
+    background: var(--kbd-bg); border: 1px solid var(--border-light);
+    color: var(--text);
     border-radius: 3px; font-family: ui-monospace, monospace;
     font-size: 11px;
   }
 
-  #output-panel {
-    height: 220px;
-    background: #2c2c2a; color: #e8e5dc;
-    border-top: 1px solid #444441;
-    display: flex; flex-direction: column;
-  }
-  #output-panel .head {
-    display: flex; align-items: center; gap: 8px;
-    padding: 8px 12px; background: #1f1f1d;
-    border-bottom: 1px solid #444441;
-  }
-  #output-panel .head .label {
-    font-size: 12px; font-weight: 500; color: #d3d1c7;
-  }
-  #output-panel .head select {
-    background: #444441; color: #e8e5dc; border: 1px solid #5f5e5a;
-    border-radius: 4px; font-size: 12px; padding: 3px 6px;
-    font-family: inherit;
-  }
-  #output-panel .head .actions { margin-left: auto; display: flex; gap: 6px; }
-  #output-panel .head .btn {
-    background: #444441; color: #e8e5dc; border-color: #5f5e5a;
-    font-size: 12px; padding: 4px 10px;
-  }
-  #output-panel .head .btn:hover { background: #5f5e5a; }
-  #output-panel .format-desc {
-    padding: 7px 14px;
-    background: #1f1f1d;
-    border-bottom: 1px solid #444441;
-    font-size: 11.5px;
-    color: #b4b2a9;
-    line-height: 1.45;
-  }
-  #output-panel .format-desc strong {
-    color: #e8e5dc;
-    font-weight: 500;
-  }
-  #output-panel pre {
-    flex: 1; margin: 0; padding: 12px 16px;
-    overflow: auto;
-    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
-    font-size: 12px; line-height: 1.55;
-    white-space: pre-wrap; word-break: break-word;
-  }
-  #output-panel pre .h { color: #97c459; font-weight: 600; }
-  #output-panel pre .k { color: #f0997b; }
-  #output-panel pre .n { color: #b5d4f4; }
-  #output-panel pre .c { color: #888780; font-style: italic; }
 
   /* Node visual styles in SVG */
   .node-group { cursor: grab; }
   .node-group:active { cursor: grabbing; }
   .node-group.selected .node-shape {
-    stroke: #2c2c2a; stroke-width: 2;
+    stroke: var(--accent); stroke-width: 2.5;
   }
   .node-group.connect-source .node-shape {
-    stroke: #0c447c; stroke-width: 2.5;
+    stroke: #5fa5f4; stroke-width: 2.5;
     stroke-dasharray: 4 3;
   }
   .node-group.connect-hover .node-shape {
-    stroke: #185fa5; stroke-width: 2;
+    stroke: #5fa5f4; stroke-width: 2;
+  }
+  .node-group.search-hit .node-shape {
+    stroke: #f0c75c; stroke-width: 3;
   }
   .node-text {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    font-size: 13px; font-weight: 500;
+    font-weight: 500;
     text-anchor: middle; dominant-baseline: middle;
     pointer-events: none;
     user-select: none;
   }
   .node-sub {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    font-size: 11px; font-weight: 400;
+    font-weight: 400;
     text-anchor: middle; dominant-baseline: middle;
     pointer-events: none;
     user-select: none;
-    fill: #5f5e5a;
   }
-  .edge-line { fill: none; stroke: #5f5e5a; stroke-width: 1.5; }
-  .edge-line.selected { stroke: #2c2c2a; stroke-width: 2.5; }
+  .edge-line { fill: none; stroke: var(--text-faint); stroke-width: 1.5; }
+  .edge-line.selected { stroke: var(--accent); stroke-width: 2.5; }
+  .arrow-fill { fill: var(--text-faint); }
+  .arrow-fill-sel { fill: var(--accent); }
   .edge-hit { fill: none; stroke: transparent; stroke-width: 12; cursor: pointer; }
   .edge-label {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    font-size: 11px; font-weight: 500; fill: #2c2c2a;
+    font-size: 11px; font-weight: 500; fill: var(--text);
     text-anchor: middle; dominant-baseline: middle;
     pointer-events: none;
     user-select: none;
   }
-  .edge-label-bg { fill: #fafaf7; stroke: #e8e5dc; stroke-width: 1; }
+  .edge-label-bg { fill: var(--surface); stroke: var(--border); stroke-width: 1; }
 
   /* Responsive: stack on narrow */
   @media (max-width: 800px) {
     main { flex-direction: column; }
-    aside.panel { width: 100%; min-width: 0; max-height: 200px; border-left: none; border-top: 1px solid #e8e5dc; }
+    aside.panel { width: 100%; min-width: 0; max-height: 200px; border-left: none; border-top: 1px solid var(--border); }
   }
 
   /* Modal */
   .modal-backdrop {
     position: fixed; inset: 0;
-    background: rgba(44, 44, 42, 0.4);
+    background: var(--modal-overlay);
     z-index: 100;
     display: none;
     align-items: center; justify-content: center;
   }
   .modal-backdrop.open { display: flex; }
   .modal {
-    background: #fff;
+    background: var(--surface);
     border-radius: 10px;
     width: 480px; max-width: 90vw;
     max-height: 80vh;
     display: flex; flex-direction: column;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+    box-shadow: var(--shadow);
     overflow: hidden;
+    border: 1px solid var(--border);
   }
   .modal-header {
     padding: 14px 18px;
-    border-bottom: 1px solid #e8e5dc;
+    border-bottom: 1px solid var(--border);
     display: flex; align-items: center; gap: 8px;
   }
   .modal-header h2 {
-    margin: 0; font-size: 15px; font-weight: 600; flex: 1;
+    margin: 0; font-size: 15px; font-weight: 600; flex: 1; color: var(--text);
   }
   .modal-close {
     border: none; background: none; cursor: pointer;
-    color: #888780; width: 28px; height: 28px;
+    color: var(--text-faint); width: 28px; height: 28px;
     border-radius: 4px; font-size: 18px;
     display: flex; align-items: center; justify-content: center;
   }
-  .modal-close:hover { background: #f1efe8; color: #2c2c2a; }
+  .modal-close:hover { background: var(--hover-bg); color: var(--text); }
   .modal-body { flex: 1; overflow-y: auto; padding: 8px; }
   .modal-footer {
     padding: 12px 16px;
-    border-top: 1px solid #e8e5dc;
+    border-top: 1px solid var(--border);
     display: flex; gap: 8px; justify-content: flex-end;
-    background: #fafaf7;
+    background: var(--surface-2);
+    flex-wrap: wrap;
   }
   .project-list { list-style: none; margin: 0; padding: 0; }
   .project-item {
@@ -293,17 +439,18 @@
     border-radius: 6px;
     cursor: pointer;
   }
-  .project-item:hover { background: #fafaf7; }
-  .project-item.current { background: #f1efe8; }
+  .project-item:hover { background: var(--hover-bg); }
+  .project-item.current { background: var(--surface-3); }
   .project-info { flex: 1; min-width: 0; }
   .project-name {
-    font-size: 13px; font-weight: 500;
+    font-size: 13px; font-weight: 500; color: var(--text);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .project-name .badge {
-    color: #888780; font-weight: 400; font-size: 11px; margin-left: 4px;
+    color: var(--text-faint); font-weight: 400; font-size: 11px; margin-left: 4px;
   }
-  .project-meta { font-size: 11px; color: #888780; margin-top: 2px; }
+  .project-meta { font-size: 11px; color: var(--text-faint); margin-top: 2px; }
+  .project-meta .linked { color: var(--accent); }
   .project-actions {
     display: flex; gap: 4px;
     opacity: 0; transition: opacity 0.1s;
@@ -313,15 +460,28 @@
   .project-action {
     border: 1px solid transparent; background: none;
     padding: 4px 8px; font-size: 11px;
-    color: #5f5e5a; cursor: pointer; border-radius: 4px;
+    color: var(--text-muted); cursor: pointer; border-radius: 4px;
     font-family: inherit;
   }
-  .project-action:hover { background: #e8e5dc; color: #2c2c2a; }
-  .project-action.danger:hover { background: #fceaea; color: #791f1f; }
+  .project-action:hover { background: var(--hover-bg); color: var(--text); }
+  .project-action.danger:hover { background: var(--danger-bg); color: var(--danger-text); }
   .project-empty {
     padding: 32px 16px; text-align: center;
-    color: #888780; font-size: 13px;
+    color: var(--text-faint); font-size: 13px;
   }
+  .workspace-bar {
+    padding: 10px 14px; margin: 0 0 8px 0;
+    background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: 6px;
+    font-size: 12px; color: var(--text-muted);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .workspace-bar .ws-path {
+    flex: 1; color: var(--text);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-family: ui-monospace, monospace; font-size: 11.5px;
+  }
+  .workspace-bar .ws-none { color: var(--text-faint); font-style: italic; }
 </style>
 </head>
 <body>
@@ -330,8 +490,12 @@
   <h1>FlowSpec <span class="tag">visual → LLM text</span></h1>
   <input type="text" class="title-input" id="title-input" placeholder="Untitled flow" value="Untitled flow">
   <div class="actions">
+    <button class="btn icon" id="theme-toggle-btn" title="Toggle dark / light theme">🌙</button>
+    <button class="btn" id="output-toggle-btn" title="Open the Spec output tab">📄 Spec</button>
     <button class="btn" id="projects-btn" title="Manage projects — switch, create, rename, delete">📁 Projects</button>
+    <button class="btn" id="save-disk-btn" title="Save project JSON to disk (workspace folder)">💾 Save to disk</button>
     <button class="btn" id="export-json-btn" title="Download as JSON">Export JSON</button>
+    <button class="btn" id="export-png-btn" title="Export the chart as a PNG image">🖼 PNG</button>
     <button class="btn" id="import-json-btn" title="Load from JSON">Import JSON</button>
     <input type="file" id="import-file" style="display:none" accept="application/json,.json">
   </div>
@@ -348,11 +512,15 @@
   <div class="group">
     <button class="btn" id="connect-btn" title="Click two nodes to connect them (C)">↳ Connect</button>
     <button class="btn" id="pan-btn" title="Pan the canvas (hold Space to pan temporarily)">✋ Pan</button>
-    <button class="btn icon" id="reset-view-btn" title="Reset view to origin">⊙ Reset view</button>
+    <button class="btn icon" id="zoom-out-btn" title="Zoom out (Z + scroll, or Ctrl + scroll)">−</button>
+    <span class="zoom-display" id="zoom-display" title="Current zoom — click to reset to 100%">100%</span>
+    <button class="btn icon" id="zoom-in-btn" title="Zoom in (Z + scroll, or Ctrl + scroll)">+</button>
+    <button class="btn icon" id="fit-content-btn" title="Fit all nodes to view (F)">⊡ Fit</button>
+    <button class="btn icon" id="reset-view-btn" title="Reset zoom and pan">⊙ Reset</button>
     <button class="btn danger icon" id="delete-btn" title="Delete selected (Del)" disabled>Delete</button>
   </div>
   <div class="group" style="margin-left:auto; border-right:none;">
-    <span style="font-size:11px; color:#888780;" id="status-text">Click a node type to add it.</span>
+    <span style="font-size:11px; color:var(--text-faint);" id="status-text">Click a node type to add it.</span>
   </div>
 </div>
 
@@ -362,11 +530,11 @@
       <defs>
         <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5"
                 markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M 0 0 L 10 5 L 0 10 z" fill="#5f5e5a"/>
+          <path d="M 0 0 L 10 5 L 0 10 z" class="arrow-fill"/>
         </marker>
         <marker id="arrow-sel" viewBox="0 0 10 10" refX="9" refY="5"
                 markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M 0 0 L 10 5 L 0 10 z" fill="#2c2c2a"/>
+          <path d="M 0 0 L 10 5 L 0 10 z" class="arrow-fill-sel"/>
         </marker>
       </defs>
       <g id="edges-layer"></g>
@@ -374,12 +542,27 @@
       <g id="overlay-layer"></g>
     </svg>
     <div class="hint" id="hint">Click a node to add a connection from it</div>
+    <div class="search-box" id="search-box">
+      <input type="text" id="search-input" placeholder="Search nodes by label or description… (Esc to close)">
+      <button class="btn icon" id="search-close" title="Close (Esc)" style="padding:4px 8px;">×</button>
+      <div class="search-results" id="search-results" style="position:absolute; left:0; right:0; top:100%; margin-top:4px; background:var(--surface); border:1px solid var(--border); border-radius:6px; box-shadow:var(--shadow); display:none;"></div>
+    </div>
   </div>
 
-  <aside class="panel">
-    <div class="panel-tabs">
-      <button class="panel-tab active" data-tab="properties">Properties</button>
-      <button class="panel-tab" data-tab="help">Help</button>
+  <aside class="panel" id="right-panel">
+    <div class="panel-header-row">
+      <div class="panel-tabs">
+        <button class="panel-tab active" data-tab="properties">Properties</button>
+        <button class="panel-tab" data-tab="spec">Spec</button>
+        <button class="panel-tab" data-tab="help">Help</button>
+      </div>
+      <button class="panel-collapse-btn" id="panel-collapse-btn" title="Hide panel">›</button>
+    </div>
+    <div class="panel-collapsed-rail">
+      <button class="rail-btn" id="rail-expand" title="Show panel">‹</button>
+      <button class="rail-tab" data-tab="properties" title="Properties">⚙</button>
+      <button class="rail-tab" data-tab="spec" title="Spec output">📄</button>
+      <button class="rail-tab" data-tab="help" title="Help">?</button>
     </div>
     <div class="panel-content" id="panel-content">
       <!-- Filled by JS -->
@@ -387,34 +570,26 @@
   </aside>
 </main>
 
-<section id="output-panel">
-  <div class="head">
-    <span class="label">LLM-friendly output</span>
-    <select id="format-select">
-      <option value="markdown">Structured Markdown</option>
-      <option value="narrative">Narrative</option>
-      <option value="tree">Folder tree (ASCII)</option>
-      <option value="json">JSON</option>
-      <option value="mermaid">Mermaid (bonus)</option>
-    </select>
-    <div class="actions">
-      <button class="btn" id="copy-btn">Copy</button>
-    </div>
-  </div>
-  <div class="format-desc" id="format-desc"></div>
-  <pre id="output-text"></pre>
-</section>
 
 <div class="modal-backdrop" id="projects-modal">
-  <div class="modal">
+  <div class="modal" style="width: 560px;">
     <div class="modal-header">
       <h2>Projects</h2>
       <button class="modal-close" id="modal-close" title="Close">×</button>
     </div>
     <div class="modal-body">
+      <div class="workspace-bar" id="workspace-bar">
+        <span style="font-size:14px;">📂</span>
+        <span style="font-weight:500; color:var(--text);">Workspace:</span>
+        <span class="ws-path" id="ws-path"><span class="ws-none">none — projects save to localStorage only</span></span>
+        <button class="btn" id="ws-pick-btn" style="font-size:11px; padding:4px 10px;">Choose folder…</button>
+        <button class="btn" id="ws-clear-btn" style="font-size:11px; padding:4px 10px; display:none;">Clear</button>
+      </div>
       <ul class="project-list" id="project-list"></ul>
     </div>
     <div class="modal-footer">
+      <button class="btn" id="open-disk-btn" title="Open a project from a folder on disk">📂 Open from disk…</button>
+      <div style="flex:1;"></div>
       <button class="btn" id="new-blank-btn">+ New (blank)</button>
       <button class="btn primary" id="new-example-btn">+ New (with example)</button>
     </div>
@@ -438,6 +613,7 @@ const NODE_TYPES = {
 };
 
 const STORAGE_KEY = 'flowspec.state.v1'; // legacy — migration handled in loadWorkspace()
+const SIZE_FACTOR = { S: 0.85, M: 1, L: 1.25 };
 
 // ---------- State ----------
 const state = {
@@ -450,9 +626,11 @@ const state = {
   connectSource: null,
   drag: null,         // { ids: [], startX, startY, origPositions: Map }
   pan: { x: 0, y: 0 },
+  zoom: 1,
   isPanning: false,
   panStart: null,     // { mouseX, mouseY, panX, panY }
   spaceDown: false,
+  zKeyDown: false,
   marquee: null,      // { x1, y1, x2, y2 } in world coords
   panTab: 'properties',
   format: 'markdown',
@@ -460,6 +638,8 @@ const state = {
   undoStack: [],
   redoStack: [],
   currentProjectId: null,
+  panelCollapsed: false,
+  searchHits: new Set(),  // node ids matching active search
 };
 
 function genId(prefix) {
@@ -593,11 +773,24 @@ function nodeSize(node) {
   const t = NODE_TYPES[node.type];
   const lines = (node.label || '').split('\n');
   const longest = lines.reduce((m, l) => Math.max(m, l.length), 0);
-  let width = Math.max(120, Math.min(220, longest * 8 + 30));
-  let height = 48;
-  if (node.description && node.description.trim()) height = 60;
+  let width = Math.max(130, Math.min(260, longest * 8.5 + 32));
+  let height = 52;
+  if (node.description && node.description.trim()) {
+    // Allow taller nodes when description is present (multi-line)
+    const desc = node.description.trim();
+    const descChars = desc.length;
+    // Roughly: ~32 chars per line at width 200
+    const approxLines = Math.min(2, Math.max(1, Math.ceil(descChars / 36)));
+    height = 56 + approxLines * 14;
+    // Widen a little if description is long-ish, to fit more on a line
+    width = Math.max(width, Math.min(260, descChars * 4.5 + 40));
+  }
   if (t.shape === 'diamond') { width += 30; height += 10; }
-  if (t.shape === 'pill') { width = Math.max(width, 110); }
+  if (t.shape === 'pill') { width = Math.max(width, 120); }
+  // Per-node size factor (S/M/L)
+  const factor = SIZE_FACTOR[node.size] || 1;
+  width = Math.round(width * factor);
+  height = Math.round(height * factor);
   return { width, height };
 }
 
@@ -665,12 +858,15 @@ function el(tag, attrs = {}, ...children) {
 }
 
 // ---------- Rendering ----------
-function render() {
-  // Apply pan to layers
-  const t = `translate(${state.pan.x},${state.pan.y})`;
+function applyTransform() {
+  const t = `translate(${state.pan.x},${state.pan.y}) scale(${state.zoom})`;
   edgesLayer.setAttribute('transform', t);
   nodesLayer.setAttribute('transform', t);
   overlayLayer.setAttribute('transform', t);
+}
+
+function render() {
+  applyTransform();
 
   renderEdges();
   renderNodes();
@@ -685,6 +881,7 @@ function render() {
   svg.classList.toggle('connecting', state.mode === 'connect');
   svg.classList.toggle('pan-ready', (state.mode === 'pan' || state.spaceDown) && !state.isPanning);
   svg.classList.toggle('panning', state.isPanning);
+  svg.classList.toggle('zooming', state.zKeyDown);
 
   if (state.mode === 'connect') {
     hintEl.classList.add('show');
@@ -694,9 +891,16 @@ function render() {
   } else if (state.mode === 'pan') {
     hintEl.classList.add('show');
     hintEl.textContent = 'Pan mode — drag to move canvas (Esc to exit)';
+  } else if (state.zKeyDown) {
+    hintEl.classList.add('show');
+    hintEl.textContent = 'Zoom mode — scroll to zoom in / out';
   } else {
     hintEl.classList.remove('show');
   }
+
+  // Update zoom display
+  const zd = document.getElementById('zoom-display');
+  if (zd) zd.textContent = Math.round(state.zoom * 100) + '%';
 
   renderOutput();
 }
@@ -713,6 +917,35 @@ function renderOverlay() {
   }
 }
 
+function wrapDescription(desc, maxCharsPerLine, maxLines) {
+  // Greedy word wrap with truncation
+  const words = desc.split(/\s+/);
+  const lines = [];
+  let cur = '';
+  for (const w of words) {
+    if (lines.length >= maxLines) break;
+    const next = cur ? cur + ' ' + w : w;
+    if (next.length <= maxCharsPerLine) {
+      cur = next;
+    } else {
+      if (cur) lines.push(cur);
+      cur = w;
+      if (lines.length >= maxLines) break;
+    }
+  }
+  if (cur && lines.length < maxLines) lines.push(cur);
+  // Truncate if text was longer than maxLines could hold
+  let trimmedDesc = desc.replace(/\s+/g, ' ').trim();
+  const joined = lines.join(' ');
+  if (joined.length < trimmedDesc.length) {
+    // Replace tail of last line with ellipsis
+    let last = lines[lines.length - 1];
+    if (last.length > maxCharsPerLine - 1) last = last.slice(0, maxCharsPerLine - 1);
+    lines[lines.length - 1] = last.replace(/[.,;:\s]*$/, '') + '…';
+  }
+  return lines;
+}
+
 function renderNodes() {
   nodesLayer.innerHTML = '';
   for (const n of state.nodes) {
@@ -720,7 +953,8 @@ function renderNodes() {
     const b = nodeBounds(n);
     const g = el('g', {
       class: 'node-group' + (state.selectedNodeIds.has(n.id) ? ' selected' : '')
-        + (state.connectSource === n.id ? ' connect-source' : ''),
+        + (state.connectSource === n.id ? ' connect-source' : '')
+        + (state.searchHits.has(n.id) ? ' search-hit' : ''),
       'data-id': n.id,
       transform: `translate(${b.cx},${b.cy})`,
     });
@@ -758,15 +992,30 @@ function renderNodes() {
     g.appendChild(shape);
 
     const hasDesc = n.description && n.description.trim();
-    let labelY = hasDesc ? -7 : 0;
-    // Folder: shift label down to sit in the body, not the tab
+    const factor = SIZE_FACTOR[n.size] || 1;
+    const labelFontSize = Math.round(13 * factor);
+    const descFontSize = Math.round(12 * factor);
+    let labelY = hasDesc ? -((descFontSize + 4) * 0.7) : 0;
     if (t.shape === 'folder') labelY += 4;
-    const label = el('text', { class: 'node-text', x: 0, y: labelY, fill: t.text }, n.label || '(untitled)');
+    const label = el('text', {
+      class: 'node-text', x: 0, y: labelY,
+      fill: t.text, 'font-size': labelFontSize,
+    }, n.label || '(untitled)');
     g.appendChild(label);
     if (hasDesc) {
-      const desc = n.description.trim();
-      const truncated = desc.length > 30 ? desc.slice(0, 28) + '…' : desc;
-      g.appendChild(el('text', { class: 'node-sub', x: 0, y: 10 }, truncated));
+      const charsPerLine = Math.max(18, Math.floor((b.w - 16) / (descFontSize * 0.55)));
+      const descLines = wrapDescription(n.description.trim(), charsPerLine, 2);
+      // Slightly muted version of the node's text color for description
+      const descColor = t.text;
+      descLines.forEach((line, i) => {
+        const y = (labelFontSize / 2 + 6) + i * (descFontSize + 2);
+        const sub = el('text', {
+          class: 'node-sub', x: 0, y,
+          'font-size': descFontSize,
+          fill: descColor, opacity: 0.78,
+        }, line);
+        g.appendChild(sub);
+      });
     }
 
     nodesLayer.appendChild(g);
@@ -825,10 +1074,13 @@ function svgPoint(evt) {
   const rect = svg.getBoundingClientRect();
   return { x: evt.clientX - rect.left, y: evt.clientY - rect.top };
 }
-// World coords (pan-adjusted) — what we use for node positions, marquee, etc.
+// World coords (pan + zoom adjusted) — what we use for node positions, marquee, etc.
 function worldPoint(evt) {
   const p = svgPoint(evt);
-  return { x: p.x - state.pan.x, y: p.y - state.pan.y };
+  return { x: (p.x - state.pan.x) / state.zoom, y: (p.y - state.pan.y) / state.zoom };
+}
+function screenToWorld(p) {
+  return { x: (p.x - state.pan.x) / state.zoom, y: (p.y - state.pan.y) / state.zoom };
 }
 
 function attachNodeHandlers(g, node) {
@@ -946,10 +1198,7 @@ document.addEventListener('mousemove', (ev) => {
     const p = svgPoint(ev);
     state.pan.x = state.panStart.panX + (p.x - state.panStart.mouseX);
     state.pan.y = state.panStart.panY + (p.y - state.panStart.mouseY);
-    const t = `translate(${state.pan.x},${state.pan.y})`;
-    edgesLayer.setAttribute('transform', t);
-    nodesLayer.setAttribute('transform', t);
-    overlayLayer.setAttribute('transform', t);
+    applyTransform();
     return;
   }
 
@@ -1022,6 +1271,12 @@ document.addEventListener('mouseup', (ev) => {
 });
 
 document.addEventListener('keydown', (ev) => {
+  // Cmd/Ctrl+F always opens search, even when focused in a field
+  if (ev.key === 'f' && (ev.metaKey || ev.ctrlKey) && !ev.shiftKey) {
+    if (typeof openSearch === 'function') openSearch();
+    ev.preventDefault();
+    return;
+  }
   if (ev.target.matches('input, textarea, select')) return;
   // Modal close on Esc takes priority
   const modal = document.getElementById('projects-modal');
@@ -1038,10 +1293,21 @@ document.addEventListener('keydown', (ev) => {
     ev.preventDefault();
     return;
   }
+  // Z key: zoom mode (hold + scroll)
+  if ((ev.key === 'z' || ev.key === 'Z') && !ev.metaKey && !ev.ctrlKey && !ev.shiftKey) {
+    if (!state.zKeyDown) {
+      state.zKeyDown = true;
+      render();
+    }
+    ev.preventDefault();
+    return;
+  }
   if (ev.key === 'Delete' || ev.key === 'Backspace') {
     if (state.selectedNodeIds.size > 0 || state.selectedEdgeId) deleteSelected();
   } else if (ev.key === 'Escape') {
-    if (state.mode !== 'select') {
+    if (state.searchHits.size > 0 && typeof closeSearch === 'function') {
+      closeSearch();
+    } else if (state.mode !== 'select') {
       state.mode = 'select';
       state.connectSource = null;
       render();
@@ -1051,17 +1317,37 @@ document.addEventListener('keydown', (ev) => {
     }
   } else if ((ev.key === 'c' || ev.key === 'C') && !ev.metaKey && !ev.ctrlKey) {
     toggleConnect();
+  } else if ((ev.key === 'f' || ev.key === 'F') && !ev.metaKey && !ev.ctrlKey) {
+    fitToContent();
   } else if (ev.key === 'a' && (ev.metaKey || ev.ctrlKey)) {
-    // Cmd/Ctrl+A: select all nodes
     state.selectedNodeIds = new Set(state.nodes.map(n => n.id));
     state.selectedEdgeId = null;
     render();
+    ev.preventDefault();
+  } else if (ev.key === 'd' && (ev.metaKey || ev.ctrlKey)) {
+    duplicateSelected();
     ev.preventDefault();
   } else if (ev.key === 'z' && (ev.metaKey || ev.ctrlKey) && !ev.shiftKey) {
     undo();
     ev.preventDefault();
   } else if (((ev.key === 'z' && ev.shiftKey) || ev.key === 'y') && (ev.metaKey || ev.ctrlKey)) {
     redo();
+    ev.preventDefault();
+  } else if (ev.key === 'ArrowUp' || ev.key === 'ArrowDown' || ev.key === 'ArrowLeft' || ev.key === 'ArrowRight') {
+    if (state.selectedNodeIds.size === 0) return;
+    const step = ev.shiftKey ? 50 : 10;
+    let dx = 0, dy = 0;
+    if (ev.key === 'ArrowUp') dy = -step;
+    if (ev.key === 'ArrowDown') dy = step;
+    if (ev.key === 'ArrowLeft') dx = -step;
+    if (ev.key === 'ArrowRight') dx = step;
+    snapshot();
+    for (const id of state.selectedNodeIds) {
+      const n = state.nodes.find(x => x.id === id);
+      if (n) { n.x += dx; n.y += dy; }
+    }
+    save();
+    render();
     ev.preventDefault();
   }
 });
@@ -1070,6 +1356,12 @@ document.addEventListener('keyup', (ev) => {
   if (ev.key === ' ' || ev.code === 'Space') {
     state.spaceDown = false;
     render();
+  }
+  if (ev.key === 'z' || ev.key === 'Z') {
+    if (state.zKeyDown && !ev.metaKey && !ev.ctrlKey) {
+      state.zKeyDown = false;
+      render();
+    }
   }
 });
 
@@ -1111,11 +1403,9 @@ function deleteSelected() {
 function addNode(type) {
   snapshot();
   const rect = svg.getBoundingClientRect();
-  // Place in visible center (world coords = viewport center - pan offset)
-  const cx = rect.width / 2 - state.pan.x;
-  const cy = rect.height / 2 - state.pan.y;
-  let x = cx, y = cy;
-  // Offset so nodes don't pile up
+  // Place in visible center (world coords accounting for pan + zoom)
+  const center = screenToWorld({ x: rect.width / 2, y: rect.height / 2 });
+  let x = center.x, y = center.y;
   const taken = new Set(state.nodes.map(n => `${Math.round(n.x/10)},${Math.round(n.y/10)}`));
   let tries = 0;
   while (taken.has(`${Math.round(x/10)},${Math.round(y/10)}`) && tries < 30) {
@@ -1127,6 +1417,7 @@ function addNode(type) {
     type,
     label: NODE_TYPES[type].label,
     description: '',
+    size: 'M',
     x: Math.round(x/10)*10,
     y: Math.round(y/10)*10,
   };
@@ -1135,6 +1426,36 @@ function addNode(type) {
   state.selectedNodeIds.add(node.id);
   state.selectedEdgeId = null;
   state.panTab = 'properties';
+  save();
+  render();
+}
+
+// ---------- Duplicate selection ----------
+function duplicateSelected() {
+  if (state.selectedNodeIds.size === 0) return;
+  snapshot();
+  const oldToNew = new Map();
+  const newIds = new Set();
+  for (const id of state.selectedNodeIds) {
+    const orig = state.nodes.find(n => n.id === id);
+    if (!orig) continue;
+    const copy = { ...orig, id: genId('node'), x: orig.x + 30, y: orig.y + 30 };
+    state.nodes.push(copy);
+    oldToNew.set(orig.id, copy.id);
+    newIds.add(copy.id);
+  }
+  // Also duplicate edges that are entirely within the selected set
+  const internal = state.edges.filter(e => oldToNew.has(e.source) && oldToNew.has(e.target));
+  for (const e of internal) {
+    state.edges.push({
+      id: genId('edge'),
+      source: oldToNew.get(e.source),
+      target: oldToNew.get(e.target),
+      label: e.label || '',
+    });
+  }
+  state.selectedNodeIds = newIds;
+  state.selectedEdgeId = null;
   save();
   render();
 }
@@ -1165,35 +1486,158 @@ function togglePan() {
 function resetView() {
   state.pan.x = 0;
   state.pan.y = 0;
+  state.zoom = 1;
   render();
 }
+
+// ---------- Zoom ----------
+const ZOOM_MIN = 0.2;
+const ZOOM_MAX = 3;
+
+function setZoom(newZoom, anchorScreen) {
+  const clamped = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, newZoom));
+  if (clamped === state.zoom) return;
+  // Anchor: keep the world point under anchorScreen stationary in screen space
+  if (anchorScreen) {
+    const wp = screenToWorld(anchorScreen);
+    state.zoom = clamped;
+    state.pan.x = anchorScreen.x - wp.x * state.zoom;
+    state.pan.y = anchorScreen.y - wp.y * state.zoom;
+  } else {
+    // Anchor on viewport center
+    const rect = svg.getBoundingClientRect();
+    const center = { x: rect.width / 2, y: rect.height / 2 };
+    const wp = screenToWorld(center);
+    state.zoom = clamped;
+    state.pan.x = center.x - wp.x * state.zoom;
+    state.pan.y = center.y - wp.y * state.zoom;
+  }
+  render();
+}
+
+function zoomBy(factor, anchorScreen) {
+  setZoom(state.zoom * factor, anchorScreen);
+}
+
+function fitToContent(padding = 60) {
+  if (state.nodes.length === 0) {
+    resetView();
+    return;
+  }
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const n of state.nodes) {
+    const b = nodeBounds(n);
+    if (b.x < minX) minX = b.x;
+    if (b.y < minY) minY = b.y;
+    if (b.x + b.w > maxX) maxX = b.x + b.w;
+    if (b.y + b.h > maxY) maxY = b.y + b.h;
+  }
+  const contentW = maxX - minX;
+  const contentH = maxY - minY;
+  const rect = svg.getBoundingClientRect();
+  const availW = rect.width - padding * 2;
+  const availH = rect.height - padding * 2;
+  const zoomFit = Math.min(availW / contentW, availH / contentH, ZOOM_MAX);
+  state.zoom = Math.max(ZOOM_MIN, zoomFit);
+  // Center content
+  const contentCenterX = (minX + maxX) / 2;
+  const contentCenterY = (minY + maxY) / 2;
+  state.pan.x = rect.width / 2 - contentCenterX * state.zoom;
+  state.pan.y = rect.height / 2 - contentCenterY * state.zoom;
+  render();
+}
+
+// Wheel handler — zoom when Z held or Ctrl held (also catches pinch on trackpads).
+// Otherwise let the browser do normal scroll behavior over the canvas.
+document.getElementById('canvas-wrap').addEventListener('wheel', (ev) => {
+  const triggerZoom = state.zKeyDown || ev.ctrlKey || ev.metaKey;
+  if (!triggerZoom) return;
+  ev.preventDefault();
+  // Normalize delta — pinch and ctrl+wheel use small values, regular wheel uses ~100px lines
+  let delta = ev.deltaY;
+  if (ev.deltaMode === 1) delta *= 16;       // line mode
+  if (ev.deltaMode === 2) delta *= 400;      // page mode
+  // Pinch-zoom on trackpads: ctrlKey true with small delta — gentler factor
+  const intensity = Math.min(0.25, Math.abs(delta) * 0.0015);
+  const factor = delta < 0 ? 1 + intensity : 1 - intensity;
+  const anchor = svgPoint(ev);
+  zoomBy(factor, anchor);
+}, { passive: false });
 
 // ---------- Side panel ----------
 function renderPanel() {
   document.querySelectorAll('.panel-tab').forEach(t => {
     t.classList.toggle('active', t.dataset.tab === state.panTab);
   });
+  document.querySelectorAll('.panel-collapsed-rail .rail-tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.tab === state.panTab);
+  });
   const c = document.getElementById('panel-content');
+  c.classList.remove('spec-mode');
   c.innerHTML = '';
+
+  if (state.panTab === 'spec') {
+    c.classList.add('spec-mode');
+    c.innerHTML = `
+      <div class="spec-head">
+        <select id="format-select" title="Output format">
+          <option value="markdown">Structured Markdown</option>
+          <option value="narrative">Narrative</option>
+          <option value="tree">Folder tree (ASCII)</option>
+          <option value="json">JSON</option>
+          <option value="mermaid">Mermaid (bonus)</option>
+        </select>
+        <button class="btn" id="copy-btn" title="Copy to clipboard">Copy</button>
+      </div>
+      <div class="spec-desc" id="format-desc"></div>
+      <pre class="spec-pre" id="output-text"></pre>
+    `;
+    const sel = document.getElementById('format-select');
+    sel.value = state.format;
+    sel.addEventListener('change', (e) => {
+      state.format = e.target.value;
+      renderOutput();
+    });
+    document.getElementById('copy-btn').addEventListener('click', async () => {
+      const txt = document.getElementById('output-text').textContent;
+      try {
+        await navigator.clipboard.writeText(txt);
+        const b = document.getElementById('copy-btn');
+        const old = b.textContent;
+        b.textContent = 'Copied!';
+        setTimeout(() => { b.textContent = old; }, 1200);
+      } catch(e) { alert('Copy failed. Select the text manually.'); }
+    });
+    renderOutput();
+    return;
+  }
 
   if (state.panTab === 'help') {
     c.innerHTML = `
       <div class="empty-state">
         <p><strong>Add a node</strong> — Click any node-type button in the toolbar.</p>
-        <p><strong>Move</strong> — Drag any node. Drag empty canvas to <strong>marquee-select</strong> multiple.</p>
-        <p><strong>Multi-select</strong> — Drag a box around nodes, or <span class="kbd">Shift</span>-click to add/remove. <span class="kbd">Cmd/Ctrl</span>+<span class="kbd">A</span> selects all. Drag any selected node to move the whole group.</p>
-        <p><strong>Pan canvas</strong> — Hold <span class="kbd">Space</span> and drag, or toggle the <span class="kbd">✋ Pan</span> button. <span class="kbd">⊙ Reset view</span> snaps back to origin.</p>
-        <p><strong>Connect</strong> — Click <span class="kbd">↳ Connect</span> (or press <span class="kbd">C</span>), then click source node, then target node.</p>
-        <p><strong>Label an edge</strong> — Click the edge line, then type a label in the Properties panel (e.g. <em>yes</em>, <em>no</em>, <em>if cached</em>).</p>
-        <p><strong>Undo / redo</strong> — <span class="kbd">Cmd/Ctrl</span>+<span class="kbd">Z</span> / <span class="kbd">Cmd/Ctrl</span>+<span class="kbd">Shift</span>+<span class="kbd">Z</span> (or <span class="kbd">Ctrl</span>+<span class="kbd">Y</span>). Up to 50 steps.</p>
-        <p><strong>Delete</strong> — Select then press <span class="kbd">Delete</span> or click the Delete button.</p>
-        <p><strong>Cancel</strong> — Press <span class="kbd">Esc</span>.</p>
-        <p><strong>Your work is auto-saved</strong> in this browser. Use Export JSON to back up or share.</p>
-        <p style="margin-top:20px; padding-top:14px; border-top:1px solid #e8e5dc;">
-          <strong>For folder structures:</strong> use Folder + File/Data nodes, connect parents to children, then switch the output to "Folder tree" to get a clean <code>tree</code>-style ASCII layout.
+        <p><strong>Move</strong> — Drag any node. Arrow keys nudge selected nodes (<span class="kbd">Shift</span> = bigger step). Drag empty canvas to <strong>marquee-select</strong> multiple.</p>
+        <p><strong>Multi-select</strong> — Drag a box, or <span class="kbd">Shift</span>-click to add/remove. <span class="kbd">Cmd/Ctrl</span>+<span class="kbd">A</span> selects all. Drag any selected node to move the whole group.</p>
+        <p><strong>Pan</strong> — Hold <span class="kbd">Space</span> and drag, or toggle the <span class="kbd">✋ Pan</span> button.</p>
+        <p><strong>Zoom</strong> — Hold <span class="kbd">Z</span> and scroll, or <span class="kbd">Ctrl</span>+scroll, or pinch on a trackpad. <span class="kbd">⊡ Fit</span> (or <span class="kbd">F</span>) frames everything. <span class="kbd">⊙ Reset</span> snaps to 100% at origin.</p>
+        <p><strong>Connect</strong> — Click <span class="kbd">↳ Connect</span> (or <span class="kbd">C</span>), then click source node, then target node.</p>
+        <p><strong>Label an edge</strong> — Click an edge, then type a label in Properties (e.g. <em>yes</em>, <em>no</em>).</p>
+        <p><strong>Duplicate</strong> — <span class="kbd">Cmd/Ctrl</span>+<span class="kbd">D</span>. Internal connections are duplicated too.</p>
+        <p><strong>Search nodes</strong> — <span class="kbd">Cmd/Ctrl</span>+<span class="kbd">F</span>.</p>
+        <p><strong>Undo / redo</strong> — <span class="kbd">Cmd/Ctrl</span>+<span class="kbd">Z</span> / <span class="kbd">Cmd/Ctrl</span>+<span class="kbd">Shift</span>+<span class="kbd">Z</span>. Up to 50 steps.</p>
+        <p><strong>Delete</strong> — Select then press <span class="kbd">Delete</span>.</p>
+        <p><strong>Cancel</strong> — <span class="kbd">Esc</span>.</p>
+        <p><strong>Spec output</strong> — Click the <strong>Spec</strong> tab (or <span class="kbd">📄 Spec</span> in the header) to see the text version of your flow in 5 formats.</p>
+        <p><strong>Collapse this panel</strong> — Click the <span class="kbd">›</span> at the top-right of the panel to hide it for more canvas. Use the icon rail to bring it back or jump to any tab.</p>
+        <p><strong>Theme</strong> — <span class="kbd">🌙 / ☀</span> in the header.</p>
+        <p style="margin-top:20px; padding-top:14px; border-top:1px solid var(--border);">
+          <strong>Save to disk:</strong> Open <span class="kbd">📁 Projects</span> → <span class="kbd">Choose folder…</span> to pick a workspace. After that, <span class="kbd">💾 Save to disk</span> writes the project as <code>&lt;Workspace&gt;/&lt;Project&gt;/&lt;project&gt;.flowspec.json</code>. Requires Chrome or Edge. Falls back to download otherwise.
+        </p>
+        <p style="margin-top:14px; padding-top:14px; border-top:1px solid var(--border);">
+          <strong>For folder structures:</strong> use Folder + File/Data nodes, connect parents to children, then switch the Spec format to "Folder tree".
         </p>
         <p>
-          <strong>For LLM workflows:</strong> Build the flow, then copy the output text into your prompt with something like <em>"Here is the structure I want, please implement it:"</em>
+          <strong>For LLM workflows:</strong> Build the flow, then copy the Spec text into your prompt.
         </p>
       </div>
     `;
@@ -1286,6 +1730,7 @@ function renderPanel() {
     const id = state.selectedNodeIds.values().next().value;
     const n = state.nodes.find(x => x.id === id);
     if (!n) return;
+    const curSize = n.size || 'M';
     c.innerHTML = `
       <div class="field">
         <label>Label</label>
@@ -1293,8 +1738,8 @@ function renderPanel() {
       </div>
       <div class="field">
         <label>Description (optional)</label>
-        <textarea id="f-desc" placeholder="Extra context the LLM should know about this step">${escapeHtml(n.description || '')}</textarea>
-        <div class="help">Shown in the text output but not the diagram (a short preview shows under the label).</div>
+        <textarea id="f-desc" placeholder="Extra context the LLM should know about this step" rows="4">${escapeHtml(n.description || '')}</textarea>
+        <div class="help">Up to 2 lines preview on the node; the full text is in the LLM output.</div>
       </div>
       <div class="field">
         <label>Type</label>
@@ -1303,13 +1748,33 @@ function renderPanel() {
         </select>
         <div class="help" id="f-type-hint">${escapeHtml(NODE_TYPES[n.type].hint || '')}</div>
       </div>
-      <button class="btn danger" id="f-delete" style="width:100%;">Delete node</button>
+      <div class="field">
+        <label>Size</label>
+        <div class="row cols-3">
+          <button class="btn ${curSize==='S'?'active':''}" data-size="S">Small</button>
+          <button class="btn ${curSize==='M'?'active':''}" data-size="M">Medium</button>
+          <button class="btn ${curSize==='L'?'active':''}" data-size="L">Large</button>
+        </div>
+      </div>
+      <div class="row cols-2" style="margin-bottom:10px;">
+        <button class="btn" id="f-duplicate" title="Cmd/Ctrl+D">⎘ Duplicate</button>
+        <button class="btn danger" id="f-delete">Delete</button>
+      </div>
     `;
     document.getElementById('f-label').addEventListener('focus', snapshot);
     document.getElementById('f-label').addEventListener('input', (e) => { n.label = e.target.value; save(); renderNodes(); renderEdges(); renderOutput(); });
     document.getElementById('f-desc').addEventListener('focus', snapshot);
-    document.getElementById('f-desc').addEventListener('input', (e) => { n.description = e.target.value; save(); renderNodes(); renderOutput(); });
+    document.getElementById('f-desc').addEventListener('input', (e) => { n.description = e.target.value; save(); renderNodes(); renderEdges(); renderOutput(); });
     document.getElementById('f-type').addEventListener('change', (e) => { snapshot(); n.type = e.target.value; const h = document.getElementById('f-type-hint'); if (h) h.textContent = NODE_TYPES[n.type].hint || ''; save(); renderNodes(); renderEdges(); renderOutput(); });
+    c.querySelectorAll('[data-size]').forEach(b => {
+      b.addEventListener('click', () => {
+        snapshot();
+        n.size = b.dataset.size;
+        save();
+        render();
+      });
+    });
+    document.getElementById('f-duplicate').addEventListener('click', () => duplicateSelected());
     document.getElementById('f-delete').addEventListener('click', () => deleteSelected());
     return;
   }
@@ -1355,6 +1820,7 @@ const FORMAT_DESC = {
 function renderOutput() {
   const out = document.getElementById('output-text');
   const desc = document.getElementById('format-desc');
+  if (!out || !desc) return; // Spec tab not currently mounted
   desc.innerHTML = FORMAT_DESC[state.format] || '';
   let txt = '';
   switch (state.format) {
@@ -1659,27 +2125,125 @@ document.getElementById('reset-view-btn').addEventListener('click', resetView);
 document.getElementById('delete-btn').addEventListener('click', deleteSelected);
 document.getElementById('undo-btn').addEventListener('click', undo);
 document.getElementById('redo-btn').addEventListener('click', redo);
+document.getElementById('zoom-in-btn').addEventListener('click', () => zoomBy(1.2));
+document.getElementById('zoom-out-btn').addEventListener('click', () => zoomBy(1/1.2));
+document.getElementById('zoom-display').addEventListener('click', () => setZoom(1));
+document.getElementById('fit-content-btn').addEventListener('click', () => fitToContent());
+
+// ---------- Theme ----------
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  try { localStorage.setItem('flowspec.theme', theme); } catch(e) {}
+  const btn = document.getElementById('theme-toggle-btn');
+  if (btn) btn.textContent = theme === 'dark' ? '🌙' : '☀';
+}
+document.getElementById('theme-toggle-btn').addEventListener('click', () => {
+  const cur = document.documentElement.getAttribute('data-theme') || 'dark';
+  applyTheme(cur === 'dark' ? 'light' : 'dark');
+});
+
+// ---------- Right panel collapse ----------
+function applyPanelCollapsed(collapsed) {
+  state.panelCollapsed = collapsed;
+  const panel = document.getElementById('right-panel');
+  if (panel) panel.classList.toggle('collapsed', collapsed);
+  try { localStorage.setItem('flowspec.panelCollapsed', collapsed ? '1' : '0'); } catch(e) {}
+}
+function togglePanel() { applyPanelCollapsed(!state.panelCollapsed); }
+
+document.getElementById('panel-collapse-btn').addEventListener('click', () => applyPanelCollapsed(true));
+document.getElementById('rail-expand').addEventListener('click', () => applyPanelCollapsed(false));
+document.querySelectorAll('.panel-collapsed-rail .rail-tab').forEach(b => {
+  b.addEventListener('click', () => {
+    state.panTab = b.dataset.tab;
+    applyPanelCollapsed(false);
+    render();
+  });
+});
+
+// Header "Output" button → jump to Spec tab and expand the panel
+document.getElementById('output-toggle-btn').addEventListener('click', () => {
+  state.panTab = 'spec';
+  applyPanelCollapsed(false);
+  render();
+});
+
+// ---------- Search (Cmd/Ctrl+F) ----------
+function openSearch() {
+  const box = document.getElementById('search-box');
+  const input = document.getElementById('search-input');
+  box.classList.add('open');
+  input.value = '';
+  state.searchHits = new Set();
+  renderSearchResults('');
+  input.focus();
+  render();
+}
+function closeSearch() {
+  document.getElementById('search-box').classList.remove('open');
+  document.getElementById('search-results').style.display = 'none';
+  state.searchHits = new Set();
+  render();
+}
+function renderSearchResults(query) {
+  const results = document.getElementById('search-results');
+  const q = query.trim().toLowerCase();
+  if (!q) {
+    state.searchHits = new Set();
+    results.style.display = 'none';
+    renderNodes();
+    return;
+  }
+  const hits = state.nodes.filter(n =>
+    (n.label || '').toLowerCase().includes(q) ||
+    (n.description || '').toLowerCase().includes(q)
+  );
+  state.searchHits = new Set(hits.map(n => n.id));
+  if (hits.length === 0) {
+    results.innerHTML = `<div style="padding:10px; color:var(--text-faint); font-size:12px;">No matches</div>`;
+    results.style.display = 'block';
+  } else {
+    results.innerHTML = hits.slice(0, 12).map(n => `
+      <div class="search-result" data-id="${n.id}">
+        ${escapeHtml(n.label || '(untitled)')}
+        <span class="type">[${NODE_TYPES[n.type].label.toLowerCase()}]</span>
+      </div>
+    `).join('');
+    results.style.display = 'block';
+    results.querySelectorAll('.search-result').forEach(el => {
+      el.addEventListener('click', () => {
+        const id = el.dataset.id;
+        const n = state.nodes.find(x => x.id === id);
+        if (!n) return;
+        // Center view on this node
+        const rect = svg.getBoundingClientRect();
+        state.pan.x = rect.width / 2 - n.x * state.zoom;
+        state.pan.y = rect.height / 2 - n.y * state.zoom;
+        state.selectedNodeIds = new Set([id]);
+        state.selectedEdgeId = null;
+        render();
+      });
+    });
+  }
+  renderNodes();
+}
+document.getElementById('search-input').addEventListener('input', (e) => {
+  renderSearchResults(e.target.value);
+});
+document.getElementById('search-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeSearch();
+  if (e.key === 'Enter') {
+    // Open the first result
+    const first = document.querySelector('#search-results .search-result');
+    if (first) first.click();
+  }
+});
+document.getElementById('search-close').addEventListener('click', closeSearch);
 document.getElementById('title-input').addEventListener('focus', snapshot);
 document.getElementById('title-input').addEventListener('input', (e) => {
   state.title = e.target.value || 'Untitled flow';
   save();
   renderOutput();
-});
-document.getElementById('format-select').addEventListener('change', (e) => {
-  state.format = e.target.value;
-  renderOutput();
-});
-document.getElementById('copy-btn').addEventListener('click', async () => {
-  const txt = document.getElementById('output-text').textContent;
-  try {
-    await navigator.clipboard.writeText(txt);
-    const b = document.getElementById('copy-btn');
-    const old = b.textContent;
-    b.textContent = 'Copied!';
-    setTimeout(() => { b.textContent = old; }, 1200);
-  } catch (e) {
-    alert('Copy failed. Select the text manually.');
-  }
 });
 // ---------- Project management ----------
 const EXAMPLE_SEED = {
@@ -1746,13 +2310,15 @@ function switchProject(id) {
   closeProjectsModal();
 }
 
-function deleteProject(id) {
+async function deleteProject(id) {
   const ws = loadWorkspace();
   const p = ws.projects[id];
   if (!p) return;
-  if (!confirm(`Delete project "${p.title}"? This cannot be undone.`)) return;
+  if (!confirm(`Delete project "${p.title}"? This cannot be undone.\n\n(Files on disk are NOT deleted — only this in-browser project record.)`)) return;
   delete ws.projects[id];
   saveWorkspace(ws);
+  // Drop the linked-folder handle too
+  try { await dbDel('proj:' + id); } catch(e) {}
   if (state.currentProjectId === id) {
     const remaining = Object.values(ws.projects).sort((a,b) => (b.updatedAt||0)-(a.updatedAt||0));
     if (remaining.length > 0) {
@@ -1793,7 +2359,7 @@ function formatRelativeDate(ts) {
   return new Date(ts).toLocaleDateString();
 }
 
-function renderProjectList() {
+async function renderProjectList() {
   const ws = loadWorkspace();
   const list = document.getElementById('project-list');
   const projects = Object.values(ws.projects).sort((a,b) => (b.updatedAt||0) - (a.updatedAt||0));
@@ -1801,13 +2367,27 @@ function renderProjectList() {
     list.innerHTML = '<li class="project-empty">No projects yet. Create one below.</li>';
     return;
   }
+  // Look up linked folder names for each project
+  const linkedNames = {};
+  if (FS_SUPPORTED) {
+    for (const p of projects) {
+      try {
+        const h = await dbGet('proj:' + p.id);
+        if (h) linkedNames[p.id] = h.name;
+      } catch(e) {}
+    }
+  }
   list.innerHTML = projects.map(p => {
     const isCurrent = p.id === state.currentProjectId;
+    const linkedFolder = linkedNames[p.id];
+    const linkedHtml = linkedFolder
+      ? ` · <span class="linked">📂 ${escapeHtml(linkedFolder)}/</span>`
+      : '';
     return `
       <li class="project-item ${isCurrent ? 'current' : ''}" data-id="${p.id}">
         <div class="project-info">
           <div class="project-name">${escapeHtml(p.title)}${isCurrent ? '<span class="badge">current</span>' : ''}</div>
-          <div class="project-meta">${(p.nodes||[]).length} nodes · ${(p.edges||[]).length} connections · ${formatRelativeDate(p.updatedAt)}</div>
+          <div class="project-meta">${(p.nodes||[]).length} nodes · ${(p.edges||[]).length} connections · ${formatRelativeDate(p.updatedAt)}${linkedHtml}</div>
         </div>
         <div class="project-actions">
           ${!isCurrent ? '<button class="project-action" data-action="open">Open</button>' : ''}
@@ -1832,6 +2412,7 @@ function renderProjectList() {
 
 function openProjectsModal() {
   renderProjectList();
+  renderWorkspaceBar();
   document.getElementById('projects-modal').classList.add('open');
 }
 function closeProjectsModal() {
@@ -1845,22 +2426,315 @@ document.getElementById('new-example-btn').addEventListener('click', () => newPr
 document.getElementById('projects-modal').addEventListener('click', (e) => {
   if (e.target.id === 'projects-modal') closeProjectsModal();
 });
-document.getElementById('export-json-btn').addEventListener('click', () => {
-  const data = {
+function serializeProject() {
+  return {
     title: state.title,
     nodes: state.nodes,
     edges: state.edges,
     nextId: state.nextId,
     _format: 'flowspec.v1',
   };
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+}
+function sanitizeFolderName(name) {
+  return (name || 'untitled').replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim() || 'untitled';
+}
+function projectFilename(title) {
+  return sanitizeFolderName(title).replace(/[^a-z0-9-_ ]+/gi, '-') + '.flowspec.json';
+}
+
+document.getElementById('export-json-btn').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(serializeProject(), null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${(state.title || 'flow').replace(/[^a-z0-9-_]+/gi, '-')}.flowspec.json`;
+  a.download = projectFilename(state.title);
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 });
+
+// ---------- File System Access API (Chrome/Edge) ----------
+const FS_SUPPORTED = 'showDirectoryPicker' in window && 'showSaveFilePicker' in window;
+const DB_NAME = 'flowspec-fs';
+const DB_STORE = 'handles';
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(DB_STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function dbGet(key) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(DB_STORE, 'readonly');
+    const req = tx.objectStore(DB_STORE).get(key);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function dbSet(key, value) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(DB_STORE, 'readwrite');
+    tx.objectStore(DB_STORE).put(value, key);
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+}
+async function dbDel(key) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(DB_STORE, 'readwrite');
+    tx.objectStore(DB_STORE).delete(key);
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+let workspaceHandle = null;
+
+async function ensurePermission(handle, mode = 'readwrite') {
+  if (!handle) return false;
+  if ((await handle.queryPermission({ mode })) === 'granted') return true;
+  return (await handle.requestPermission({ mode })) === 'granted';
+}
+
+async function loadWorkspaceHandle() {
+  if (!FS_SUPPORTED) return null;
+  try {
+    const h = await dbGet('workspace');
+    workspaceHandle = h || null;
+    return workspaceHandle;
+  } catch(e) { return null; }
+}
+
+async function pickWorkspace() {
+  if (!FS_SUPPORTED) {
+    alert('Your browser doesn\'t support the File System Access API. Use Chrome or Edge for in-place disk saving. You can still use Export/Import JSON.');
+    return;
+  }
+  try {
+    const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    workspaceHandle = handle;
+    await dbSet('workspace', handle);
+    await renderWorkspaceBar();
+    setStatus('Workspace set: ' + handle.name);
+  } catch(e) {
+    if (e.name !== 'AbortError') console.warn(e);
+  }
+}
+
+async function clearWorkspace() {
+  workspaceHandle = null;
+  await dbDel('workspace');
+  // Also clear per-project linked dirs since they live under the old workspace
+  const ws = loadWorkspace();
+  for (const id of Object.keys(ws.projects)) {
+    await dbDel('proj:' + id);
+  }
+  await renderWorkspaceBar();
+  setStatus('Workspace cleared.');
+}
+
+async function getOrCreateProjectDir(projectId, title) {
+  if (!workspaceHandle) return null;
+  if (!(await ensurePermission(workspaceHandle, 'readwrite'))) return null;
+  // Reuse linked handle if available
+  let linked = await dbGet('proj:' + projectId);
+  if (linked && await ensurePermission(linked, 'readwrite')) {
+    return linked;
+  }
+  // Create / open by sanitized title
+  const folderName = sanitizeFolderName(title);
+  const dir = await workspaceHandle.getDirectoryHandle(folderName, { create: true });
+  await dbSet('proj:' + projectId, dir);
+  return dir;
+}
+
+async function saveProjectToDisk(opts = {}) {
+  if (!FS_SUPPORTED) {
+    // Fallback: trigger a download
+    document.getElementById('export-json-btn').click();
+    return;
+  }
+  if (!workspaceHandle) {
+    if (opts.silent) return;
+    alert('No workspace folder set. Open Projects → Choose folder… first.');
+    return;
+  }
+  try {
+    const dir = await getOrCreateProjectDir(state.currentProjectId, state.title);
+    if (!dir) {
+      if (!opts.silent) alert('Could not access workspace folder. Permission denied or folder moved.');
+      return;
+    }
+    const fileName = projectFilename(state.title);
+    const fileHandle = await dir.getFileHandle(fileName, { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write(JSON.stringify(serializeProject(), null, 2));
+    await writable.close();
+    setStatus(`Saved to ${dir.name}/${fileName}`);
+  } catch(e) {
+    console.warn('Save failed', e);
+    if (!opts.silent) alert('Save failed: ' + e.message);
+  }
+}
+
+async function openProjectFromDisk() {
+  if (!FS_SUPPORTED) {
+    document.getElementById('import-json-btn').click();
+    return;
+  }
+  try {
+    const [fileHandle] = await window.showOpenFilePicker({
+      types: [{
+        description: 'FlowSpec JSON',
+        accept: { 'application/json': ['.json', '.flowspec.json'] },
+      }],
+      multiple: false,
+    });
+    const file = await fileHandle.getFile();
+    const text = await file.text();
+    const data = JSON.parse(text);
+    if (!data.nodes || !Array.isArray(data.nodes)) throw new Error('Invalid FlowSpec file');
+    // Treat as importing into a new project
+    state.currentProjectId = 'proj_' + Date.now();
+    state.title = data.title || file.name.replace(/\.flowspec\.json$/, '').replace(/\.json$/, '');
+    state.nodes = data.nodes;
+    state.edges = data.edges || [];
+    state.nextId = data.nextId || (state.nodes.length + state.edges.length + 1);
+    state.pan = { x: 0, y: 0 };
+    state.zoom = 1;
+    state.undoStack = [];
+    state.redoStack = [];
+    clearSelection();
+    document.getElementById('title-input').value = state.title;
+    save();
+    render();
+    closeProjectsModal();
+    setStatus('Opened from disk: ' + file.name);
+  } catch(e) {
+    if (e.name !== 'AbortError') alert('Could not open: ' + e.message);
+  }
+}
+
+async function renderWorkspaceBar() {
+  const pathEl = document.getElementById('ws-path');
+  const clearBtn = document.getElementById('ws-clear-btn');
+  const pickBtn = document.getElementById('ws-pick-btn');
+  if (!FS_SUPPORTED) {
+    pathEl.innerHTML = '<span class="ws-none">Not supported in this browser — use Chrome/Edge for in-place save</span>';
+    pickBtn.disabled = true;
+    clearBtn.style.display = 'none';
+    return;
+  }
+  if (workspaceHandle) {
+    pathEl.textContent = workspaceHandle.name + '/';
+    clearBtn.style.display = '';
+    pickBtn.textContent = 'Change…';
+  } else {
+    pathEl.innerHTML = '<span class="ws-none">none — projects save to localStorage only</span>';
+    clearBtn.style.display = 'none';
+    pickBtn.textContent = 'Choose folder…';
+  }
+}
+
+function setStatus(msg, durationMs = 3000) {
+  const el = document.getElementById('status-text');
+  if (!el) return;
+  el.textContent = msg;
+  if (el._timeout) clearTimeout(el._timeout);
+  el._timeout = setTimeout(() => {
+    el.textContent = state.nodes.length === 0 ? 'Click a node type to add it.' : '';
+  }, durationMs);
+}
+
+document.getElementById('save-disk-btn').addEventListener('click', () => saveProjectToDisk());
+document.getElementById('ws-pick-btn').addEventListener('click', pickWorkspace);
+document.getElementById('ws-clear-btn').addEventListener('click', clearWorkspace);
+document.getElementById('open-disk-btn').addEventListener('click', openProjectFromDisk);
+
+// ---------- PNG Export ----------
+async function exportPng() {
+  if (state.nodes.length === 0) {
+    alert('Nothing to export.');
+    return;
+  }
+  // Compute bounding box of content
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const n of state.nodes) {
+    const b = nodeBounds(n);
+    if (b.x < minX) minX = b.x;
+    if (b.y < minY) minY = b.y;
+    if (b.x + b.w > maxX) maxX = b.x + b.w;
+    if (b.y + b.h > maxY) maxY = b.y + b.h;
+  }
+  const padding = 40;
+  const w = Math.ceil(maxX - minX + padding * 2);
+  const h = Math.ceil(maxY - minY + padding * 2);
+  // Build a standalone SVG by cloning current edges/nodes layers
+  const theme = document.documentElement.getAttribute('data-theme') || 'dark';
+  const bg = getComputedStyle(document.body).getPropertyValue('--canvas-bg').trim() || (theme === 'dark' ? '#1f1f1d' : '#fafaf7');
+  const styles = document.querySelector('style').textContent;
+  const edgesClone = edgesLayer.cloneNode(true);
+  const nodesClone = nodesLayer.cloneNode(true);
+  edgesClone.setAttribute('transform', `translate(${-minX + padding},${-minY + padding})`);
+  nodesClone.setAttribute('transform', `translate(${-minX + padding},${-minY + padding})`);
+  // Strip event-only hit paths so they don't appear; they're invisible anyway
+  const xmlns = 'http://www.w3.org/2000/svg';
+  const out = document.createElementNS(xmlns, 'svg');
+  out.setAttribute('xmlns', xmlns);
+  out.setAttribute('width', w);
+  out.setAttribute('height', h);
+  out.setAttribute('viewBox', `0 0 ${w} ${h}`);
+  out.setAttribute('data-theme', theme);
+  // Background rect
+  const bgRect = document.createElementNS(xmlns, 'rect');
+  bgRect.setAttribute('width', w);
+  bgRect.setAttribute('height', h);
+  bgRect.setAttribute('fill', bg);
+  out.appendChild(bgRect);
+  // Inline arrow markers
+  const defs = document.createElementNS(xmlns, 'defs');
+  defs.innerHTML = svg.querySelector('defs').innerHTML;
+  out.appendChild(defs);
+  // Inline styles so themed colors resolve in the rasterized image
+  const styleEl = document.createElementNS(xmlns, 'style');
+  styleEl.textContent = styles;
+  out.appendChild(styleEl);
+  out.appendChild(edgesClone);
+  out.appendChild(nodesClone);
+
+  const serializer = new XMLSerializer();
+  const svgStr = serializer.serializeToString(out);
+  const svgBlob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
+  const url = URL.createObjectURL(svgBlob);
+  const img = new Image();
+  img.onload = () => {
+    const scale = 2; // retina-ish
+    const canvas = document.createElement('canvas');
+    canvas.width = w * scale;
+    canvas.height = h * scale;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(scale, scale);
+    ctx.drawImage(img, 0, 0);
+    URL.revokeObjectURL(url);
+    canvas.toBlob((blob) => {
+      const dl = document.createElement('a');
+      dl.href = URL.createObjectURL(blob);
+      dl.download = sanitizeFolderName(state.title) + '.png';
+      dl.click();
+      setTimeout(() => URL.revokeObjectURL(dl.href), 1000);
+    }, 'image/png');
+  };
+  img.onerror = (e) => {
+    URL.revokeObjectURL(url);
+    alert('PNG export failed. Try exporting JSON instead.');
+  };
+  img.src = url;
+}
 document.getElementById('import-json-btn').addEventListener('click', () => {
   document.getElementById('import-file').click();
 });
@@ -1894,6 +2768,8 @@ document.querySelectorAll('.panel-tab').forEach(t => {
   });
 });
 
+document.getElementById('export-png-btn').addEventListener('click', exportPng);
+
 // ---------- Init ----------
 buildToolbar();
 const loaded = load();
@@ -1904,6 +2780,18 @@ if (!loaded) {
   updateUndoRedoButtons();
   render();
 }
+
+// Apply theme button label
+applyTheme(document.documentElement.getAttribute('data-theme') || 'dark');
+
+// Restore right-panel collapsed state
+try {
+  const c = localStorage.getItem('flowspec.panelCollapsed') === '1';
+  applyPanelCollapsed(c);
+} catch(e) { applyPanelCollapsed(false); }
+
+// Try to restore the workspace handle (if any)
+loadWorkspaceHandle().then(() => renderWorkspaceBar()).catch(() => {});
 
 </script>
 </body>
