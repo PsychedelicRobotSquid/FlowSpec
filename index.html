@@ -436,6 +436,56 @@
     border-radius: 3px; font-family: ui-monospace, monospace;
     font-size: 11px;
   }
+  /* Help tab styles */
+  .help-section { margin: 0 0 8px 0; }
+  .help-section > summary {
+    cursor: pointer; padding: 8px 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: 6px;
+    font-size: 12px; font-weight: 500; color: var(--text);
+    list-style: none;
+    user-select: none;
+  }
+  .help-section > summary::-webkit-details-marker { display: none; }
+  .help-section > summary::before {
+    content: '▸'; display: inline-block;
+    margin-right: 8px; color: var(--text-faint);
+    transition: transform 0.15s;
+  }
+  .help-section[open] > summary::before { transform: rotate(90deg); }
+  .help-section[open] > summary { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+  .help-body {
+    padding: 10px 12px;
+    border: 1px solid var(--border); border-top: none;
+    border-bottom-left-radius: 6px; border-bottom-right-radius: 6px;
+    font-size: 12.5px; line-height: 1.55;
+    color: var(--text-muted);
+  }
+  .help-body strong { color: var(--text); font-weight: 500; }
+  .help-body p { margin: 0 0 8px 0; }
+  .help-body p:last-child { margin-bottom: 0; }
+  .help-body .kbd {
+    display: inline-block;
+    padding: 1px 5px;
+    background: var(--kbd-bg); border: 1px solid var(--border-light);
+    color: var(--text);
+    border-radius: 3px; font-family: ui-monospace, monospace;
+    font-size: 11px;
+  }
+  .shortcuts-table {
+    width: 100%; border-collapse: collapse;
+    font-size: 12px;
+  }
+  .shortcuts-table td {
+    padding: 5px 6px; border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  .shortcuts-table tr:last-child td { border-bottom: none; }
+  .shortcuts-table td:first-child {
+    width: 38%; white-space: nowrap;
+    color: var(--text); font-family: ui-monospace, monospace;
+  }
+  .shortcuts-table td:last-child { color: var(--text-muted); }
 
 
   /* Node visual styles in SVG */
@@ -885,6 +935,8 @@ const state = {
   loading: false,          // true while bulk-loading a project (suppresses dirty)
   connectDrag: null,       // { sourceId, currentWorldX, currentWorldY, hoverTargetId } when dragging a handle
   alignGuides: [],         // [{ type: 'v'|'h', value }] in world coords, visible during drag
+  clipboard: null,         // { nodes: [...], edges: [...] } from last copy
+  contextMenuWorldPoint: null, // world coords where the context menu was opened (for "Paste here")
 };
 
 function genId(prefix) {
@@ -1876,6 +1928,22 @@ document.addEventListener('keydown', (ev) => {
   } else if (ev.key === 'd' && (ev.metaKey || ev.ctrlKey)) {
     duplicateSelected();
     ev.preventDefault();
+  } else if (ev.key === 'c' && (ev.metaKey || ev.ctrlKey) && !ev.shiftKey) {
+    // Cmd/Ctrl+C: copy nodes if any selected (otherwise let browser handle text copy)
+    if (state.selectedNodeIds.size > 0) {
+      copySelectedToClipboard();
+      ev.preventDefault();
+    }
+  } else if (ev.key === 'x' && (ev.metaKey || ev.ctrlKey) && !ev.shiftKey) {
+    if (state.selectedNodeIds.size > 0) {
+      cutSelectedToClipboard();
+      ev.preventDefault();
+    }
+  } else if (ev.key === 'v' && (ev.metaKey || ev.ctrlKey) && !ev.shiftKey) {
+    if (state.clipboard && state.clipboard.nodes.length > 0) {
+      pasteFromClipboard();
+      ev.preventDefault();
+    }
   } else if (ev.key === 'z' && (ev.metaKey || ev.ctrlKey) && !ev.shiftKey) {
     undo();
     ev.preventDefault();
@@ -1979,6 +2047,69 @@ function addNode(type) {
   render();
 }
 
+// ---------- Copy / Cut / Paste ----------
+function copySelectedToClipboard() {
+  if (state.selectedNodeIds.size === 0) return false;
+  const ids = new Set(state.selectedNodeIds);
+  const nodes = state.nodes.filter(n => ids.has(n.id)).map(n => ({...n}));
+  const edges = state.edges.filter(e => ids.has(e.source) && ids.has(e.target)).map(e => ({...e}));
+  state.clipboard = { nodes, edges };
+  setStatus(`Copied ${nodes.length} node${nodes.length===1?'':'s'}`);
+  return true;
+}
+
+function pasteFromClipboard(atWorldX, atWorldY) {
+  if (!state.clipboard || state.clipboard.nodes.length === 0) {
+    setStatus('Clipboard is empty.');
+    return;
+  }
+  snapshot();
+  const nodesIn = state.clipboard.nodes;
+  // Original centroid
+  const cx = nodesIn.reduce((s, n) => s + n.x, 0) / nodesIn.length;
+  const cy = nodesIn.reduce((s, n) => s + n.y, 0) / nodesIn.length;
+  let offsetX, offsetY;
+  if (typeof atWorldX === 'number' && typeof atWorldY === 'number') {
+    offsetX = atWorldX - cx;
+    offsetY = atWorldY - cy;
+  } else {
+    // Default: paste at current viewport center, fall back to slight offset
+    const rect = svg.getBoundingClientRect();
+    const center = screenToWorld({ x: rect.width / 2, y: rect.height / 2 });
+    offsetX = center.x - cx;
+    offsetY = center.y - cy;
+  }
+  offsetX = Math.round(offsetX / 10) * 10;
+  offsetY = Math.round(offsetY / 10) * 10;
+
+  const oldToNew = new Map();
+  const newNodes = [];
+  for (const n of nodesIn) {
+    const newId = genId('node');
+    oldToNew.set(n.id, newId);
+    newNodes.push({ ...n, id: newId, x: n.x + offsetX, y: n.y + offsetY });
+  }
+  const newEdges = state.clipboard.edges.map(e => ({
+    ...e,
+    id: genId('edge'),
+    source: oldToNew.get(e.source),
+    target: oldToNew.get(e.target),
+  }));
+  state.nodes.push(...newNodes);
+  state.edges.push(...newEdges);
+  state.selectedNodeIds = new Set(newNodes.map(n => n.id));
+  state.selectedEdgeId = null;
+  save();
+  render();
+  setStatus(`Pasted ${newNodes.length} node${newNodes.length===1?'':'s'}`);
+}
+
+function cutSelectedToClipboard() {
+  if (copySelectedToClipboard()) {
+    deleteSelected();
+  }
+}
+
 // ---------- Duplicate selection ----------
 function duplicateSelected() {
   if (state.selectedNodeIds.size === 0) return;
@@ -2047,6 +2178,8 @@ const LONG_PRESS_MS = 500;
 const LONG_PRESS_MOVE_PX = 10;
 
 function showContextMenu(clientX, clientY, items) {
+  // Remember the world location for "Paste here"
+  state.contextMenuWorldPoint = screenToWorld(svgPointFromClient({ x: clientX, y: clientY }));
   ctxMenu.innerHTML = '';
   for (const it of items) {
     if (it === 'sep') {
@@ -2086,7 +2219,17 @@ document.addEventListener('keydown', (ev) => {
 });
 
 function menuItemsForNode(nodeId) {
-  return [
+  const hasClipboard = state.clipboard && state.clipboard.nodes.length > 0;
+  // If user right-clicked a node that's already part of a multi-selection,
+  // operate on the whole selection. Otherwise operate on just this node.
+  const ensureScope = () => {
+    if (!state.selectedNodeIds.has(nodeId)) {
+      state.selectedNodeIds = new Set([nodeId]);
+      state.selectedEdgeId = null;
+    }
+  };
+  const selCount = state.selectedNodeIds.has(nodeId) ? state.selectedNodeIds.size : 1;
+  const items = [
     { label: 'Edit properties', action: () => {
       state.selectedNodeIds = new Set([nodeId]);
       state.selectedEdgeId = null;
@@ -2094,23 +2237,38 @@ function menuItemsForNode(nodeId) {
       applyPanelCollapsed(false);
       render();
     }},
-    { label: 'Duplicate', action: () => {
-      state.selectedNodeIds = new Set([nodeId]);
-      state.selectedEdgeId = null;
+    { label: selCount > 1 ? `Duplicate ${selCount} nodes` : 'Duplicate', action: () => {
+      ensureScope();
       duplicateSelected();
     }},
-    { label: 'Connect from this…', action: () => {
-      state.mode = 'connect';
-      state.connectSource = nodeId;
-      render();
-    }},
     'sep',
-    { label: 'Delete', danger: true, action: () => {
-      state.selectedNodeIds = new Set([nodeId]);
-      state.selectedEdgeId = null;
-      deleteSelected();
+    { label: selCount > 1 ? `Copy ${selCount} nodes` : 'Copy', action: () => {
+      ensureScope();
+      copySelectedToClipboard();
+    }},
+    { label: selCount > 1 ? `Cut ${selCount} nodes` : 'Cut', action: () => {
+      ensureScope();
+      cutSelectedToClipboard();
     }},
   ];
+  if (hasClipboard) {
+    items.push({ label: `Paste here (${state.clipboard.nodes.length})`, action: () => {
+      const wp = state.contextMenuWorldPoint;
+      pasteFromClipboard(wp ? wp.x : undefined, wp ? wp.y : undefined);
+    }});
+  }
+  items.push('sep');
+  items.push({ label: 'Connect from this…', action: () => {
+    state.mode = 'connect';
+    state.connectSource = nodeId;
+    render();
+  }});
+  items.push('sep');
+  items.push({ label: selCount > 1 ? `Delete ${selCount} nodes` : 'Delete', danger: true, action: () => {
+    ensureScope();
+    deleteSelected();
+  }});
+  return items;
 }
 function menuItemsForEdge(edgeId) {
   return [
@@ -2129,14 +2287,18 @@ function menuItemsForEdge(edgeId) {
   ];
 }
 function menuItemsForCanvas() {
-  return [
-    { label: 'Paste node here', action: () => {
-      // Future: clipboard. For now, no-op since clipboard isn't tracked.
-    }},
-    { label: 'Fit to content', action: () => fitToContent() },
-    { label: 'Reset view', action: () => resetView() },
-    { label: 'Auto-layout', action: () => autoLayout() },
-  ];
+  const items = [];
+  if (state.clipboard && state.clipboard.nodes.length > 0) {
+    items.push({ label: `Paste here (${state.clipboard.nodes.length})`, action: () => {
+      const wp = state.contextMenuWorldPoint;
+      pasteFromClipboard(wp ? wp.x : undefined, wp ? wp.y : undefined);
+    }});
+    items.push('sep');
+  }
+  items.push({ label: 'Fit to content', action: () => fitToContent() });
+  items.push({ label: 'Reset view', action: () => resetView() });
+  items.push({ label: 'Auto-layout', action: () => autoLayout() });
+  return items;
 }
 
 function cancelLongPress() {
@@ -2434,41 +2596,135 @@ function renderPanel() {
 
   if (state.panTab === 'help') {
     c.innerHTML = `
-      <div class="empty-state">
-        <p><strong>Add a node</strong> — Click any node-type button in the toolbar.</p>
-        <p><strong>Move</strong> — Drag any node. Arrow keys nudge selected nodes (<span class="kbd">Shift</span> = bigger step). Drag empty canvas to <strong>marquee-select</strong> multiple.</p>
-        <p><strong>Multi-select</strong> — Drag a box, or <span class="kbd">Shift</span>-click to add/remove. <span class="kbd">Cmd/Ctrl</span>+<span class="kbd">A</span> selects all. Drag any selected node to move the whole group.</p>
-        <p><strong>Pan</strong> — Hold <span class="kbd">Space</span> and drag, or toggle the <span class="kbd">✋ Pan</span> button.</p>
-        <p><strong>Zoom</strong> — Hold <span class="kbd">Z</span> and scroll, or <span class="kbd">Ctrl</span>+scroll, or pinch on a trackpad. <span class="kbd">⊡ Fit</span> (or <span class="kbd">F</span>) frames everything. <span class="kbd">⊙ Reset</span> snaps to 100% at origin.</p>
-        <p><strong>Connect</strong> — Click <span class="kbd">↳ Connect</span> (or <span class="kbd">C</span>), then click source node, then target node.</p>
-        <p><strong>Label an edge</strong> — Click an edge, then type a label in Properties (e.g. <em>yes</em>, <em>no</em>).</p>
-        <p><strong>Duplicate</strong> — <span class="kbd">Cmd/Ctrl</span>+<span class="kbd">D</span>. Internal connections are duplicated too.</p>
-        <p><strong>Search nodes</strong> — <span class="kbd">Cmd/Ctrl</span>+<span class="kbd">F</span>.</p>
-        <p><strong>Undo / redo</strong> — <span class="kbd">Cmd/Ctrl</span>+<span class="kbd">Z</span> / <span class="kbd">Cmd/Ctrl</span>+<span class="kbd">Shift</span>+<span class="kbd">Z</span>. Up to 50 steps.</p>
-        <p><strong>Delete</strong> — Select then press <span class="kbd">Delete</span>.</p>
-        <p><strong>Cancel</strong> — <span class="kbd">Esc</span>.</p>
-        <p><strong>Spec output</strong> — Click the <strong>Spec</strong> tab (or <span class="kbd">📄 Spec</span> in the header) to see the text version of your flow in 5 formats.</p>
-        <p><strong>Collapse this panel</strong> — Click the <span class="kbd">›</span> at the top-right of the panel to hide it for more canvas. Use the icon rail to bring it back or jump to any tab.</p>
-        <p><strong>Theme</strong> — <span class="kbd">🌙 / ☀</span> in the header.</p>
-        <p style="margin-top:20px; padding-top:14px; border-top:1px solid var(--border);">
-          <strong>Open / Save / Save As</strong> — Each project can be linked to a <code>.flowspec.json</code> file on disk.
-          <span class="kbd">📂 Open…</span> (<span class="kbd">Cmd/Ctrl</span>+<span class="kbd">O</span>) picks a file; that project then "remembers" it.
-          <span class="kbd">💾 Save</span> (<span class="kbd">Cmd/Ctrl</span>+<span class="kbd">S</span>) writes back to the linked file, or asks where to save if none.
-          <span class="kbd">Save As…</span> (<span class="kbd">Cmd/Ctrl</span>+<span class="kbd">Shift</span>+<span class="kbd">S</span>) picks a new location.
-          A <span class="kbd">📎 filename</span> chip next to the title shows the link; click <span class="kbd">×</span> on it to unlink.
-          A <span class="kbd">•</span> means you have changes that aren't on disk yet.
-          In Chrome/Edge this is silent and in-place; Firefox/Safari fall back to download dialogs.
-        </p>
-        <p style="margin-top:14px; padding-top:14px; border-top:1px solid var(--border);">
-          <strong>Export</strong> — The <span class="kbd">⤓ Export ▾</span> menu makes a copy without changing the link: JSON copy, PNG image, or jump to the Spec text tab.
-        </p>
-        <p>
-          <strong>For folder structures:</strong> use Folder + File/Data nodes, connect parents to children, then switch the Spec format to "Folder tree".
-        </p>
-        <p>
-          <strong>For LLM workflows:</strong> Build the flow, then copy the Spec text into your prompt.
-        </p>
-      </div>
+      <details class="help-section" open>
+        <summary>Getting started</summary>
+        <div class="help-body">
+          <p><strong>Add a node</strong> — click any node-type button in the toolbar, or press <span class="kbd">1</span>–<span class="kbd">8</span>.</p>
+          <p><strong>Move</strong> — drag any node. Arrow keys nudge selected nodes (<span class="kbd">Shift</span> for a bigger step).</p>
+          <p><strong>Label or describe</strong> — click a node, edit Label/Description in the Properties tab. Press <span class="kbd">Enter</span> inside the label for a line break.</p>
+          <p><strong>Delete</strong> — select, then <span class="kbd">Delete</span>.</p>
+        </div>
+      </details>
+
+      <details class="help-section">
+        <summary>Connections</summary>
+        <div class="help-body">
+          <p><strong>By dragging</strong> — select a node, then drag from one of the 4 small handles on its edges to another node.</p>
+          <p><strong>By two clicks</strong> — toggle <span class="kbd">↳ Connect</span> (or <span class="kbd">C</span>), then click the source node, then the target.</p>
+          <p><strong>Label an edge</strong> — click the line itself, then type a label in Properties (e.g. <em>yes</em>, <em>no</em>, <em>retry</em>).</p>
+        </div>
+      </details>
+
+      <details class="help-section">
+        <summary>Selection &amp; navigation</summary>
+        <div class="help-body">
+          <p><strong>Multi-select</strong> — drag an empty area to marquee-select, or <span class="kbd">Shift</span>-click to add/remove. <span class="kbd">Cmd/Ctrl</span>+<span class="kbd">A</span> selects all.</p>
+          <p><strong>Pan</strong> — hold <span class="kbd">Space</span> + drag, or one-finger drag on touch.</p>
+          <p><strong>Zoom</strong> — hold <span class="kbd">Z</span> + scroll, or <span class="kbd">Ctrl</span>+scroll, or pinch on a trackpad / touch screen.</p>
+          <p><strong>Fit / Reset</strong> — <span class="kbd">⊡ Fit</span> (<span class="kbd">F</span>) frames all nodes. <span class="kbd">⊙ Reset</span> goes back to 100% at origin.</p>
+          <p><strong>Search nodes</strong> — <span class="kbd">Cmd/Ctrl</span>+<span class="kbd">F</span> — searches labels and descriptions.</p>
+        </div>
+      </details>
+
+      <details class="help-section">
+        <summary>Copy, paste, duplicate</summary>
+        <div class="help-body">
+          <p><strong>Copy / cut / paste</strong> — <span class="kbd">Cmd/Ctrl</span>+<span class="kbd">C</span>, <span class="kbd">Cmd/Ctrl</span>+<span class="kbd">X</span>, <span class="kbd">Cmd/Ctrl</span>+<span class="kbd">V</span>. Internal connections come along for the ride.</p>
+          <p><strong>Duplicate</strong> — <span class="kbd">Cmd/Ctrl</span>+<span class="kbd">D</span> drops a copy nearby.</p>
+          <p><strong>Paste at a specific spot</strong> — right-click (or long-press on touch) the canvas and pick <em>Paste here</em>.</p>
+        </div>
+      </details>
+
+      <details class="help-section">
+        <summary>Auto-layout</summary>
+        <div class="help-body">
+          <p><strong>Tidy up a messy flow</strong> — click <span class="kbd">▦ Tidy</span> (or press <span class="kbd">L</span>). Nodes are arranged top-to-bottom in layers based on connections, with sibling ordering chosen to minimize edge crossings.</p>
+          <p>Works on disconnected sub-graphs too. Undo if you don't like it.</p>
+        </div>
+      </details>
+
+      <details class="help-section">
+        <summary>Right-click / long-press menu</summary>
+        <div class="help-body">
+          <p>On desktop, right-click on a node, edge, or empty canvas for contextual actions. On touch, long-press (~½ second) does the same.</p>
+          <p><strong>On a node:</strong> edit properties, duplicate, copy/cut/paste, connect, delete.</p>
+          <p><strong>On an edge:</strong> edit the label, delete the connection.</p>
+          <p><strong>On the canvas:</strong> paste at click position, fit, reset, auto-layout.</p>
+        </div>
+      </details>
+
+      <details class="help-section">
+        <summary>Open, Save, Save As</summary>
+        <div class="help-body">
+          <p>Each project can be linked to a <code>.flowspec.json</code> file on disk.</p>
+          <p><strong>📂 Open…</strong> (<span class="kbd">Cmd/Ctrl</span>+<span class="kbd">O</span>) picks a file and remembers it for that project.</p>
+          <p><strong>💾 Save</strong> (<span class="kbd">Cmd/Ctrl</span>+<span class="kbd">S</span>) writes back to the linked file, or asks where to save if there's no link yet.</p>
+          <p><strong>Save As…</strong> (<span class="kbd">Cmd/Ctrl</span>+<span class="kbd">Shift</span>+<span class="kbd">S</span>) picks a new location and re-links.</p>
+          <p>A <span class="kbd">📎 filename</span> chip next to the title shows the link; click <span class="kbd">×</span> to unlink. A <span class="kbd">•</span> means you have unsaved changes.</p>
+          <p><em>Chrome / Edge:</em> silent in-place save. <em>Firefox / Safari:</em> falls back to download dialogs (no FS Access API).</p>
+        </div>
+      </details>
+
+      <details class="help-section">
+        <summary>Export &amp; Spec output</summary>
+        <div class="help-body">
+          <p>The <strong>Spec</strong> tab renders your flow as text in 5 formats: Markdown, Narrative, Folder tree, JSON, or Mermaid. <span class="kbd">Copy</span> to clipboard or <span class="kbd">Save…</span> to a file.</p>
+          <p>The header <strong>⤓ Export ▾</strong> menu makes copies that don't change the file link: JSON copy of the project, PNG image of the chart, or jump to the Spec tab.</p>
+          <p><strong>For folder structures:</strong> use Folder + File/Data nodes, connect parents to children, then switch the Spec format to "Folder tree".</p>
+        </div>
+      </details>
+
+      <details class="help-section">
+        <summary>Mobile gestures</summary>
+        <div class="help-body">
+          <p><strong>1-finger drag on canvas</strong> — pan</p>
+          <p><strong>1-finger drag on a node</strong> — move the node</p>
+          <p><strong>Tap a node / edge</strong> — select</p>
+          <p><strong>2-finger pinch</strong> — zoom</p>
+          <p><strong>2-finger drag</strong> — pan + zoom together</p>
+          <p><strong>Long-press</strong> — context menu</p>
+          <p>The bottom drawer collapses by default; tap a tab to open. Use <span class="kbd">⌃ Tools</span> to hide the toolbar, or <span class="kbd">⛶</span> for full fullscreen.</p>
+        </div>
+      </details>
+
+      <details class="help-section">
+        <summary>Keyboard shortcuts</summary>
+        <div class="help-body">
+          <table class="shortcuts-table">
+            <tr><td>1–8</td><td>Add node by type</td></tr>
+            <tr><td>C</td><td>Toggle Connect mode</td></tr>
+            <tr><td>F</td><td>Fit to content</td></tr>
+            <tr><td>L</td><td>Auto-layout (Tidy)</td></tr>
+            <tr><td>Z + scroll</td><td>Zoom in / out</td></tr>
+            <tr><td>Space + drag</td><td>Pan</td></tr>
+            <tr><td>Delete / Backspace</td><td>Delete selection</td></tr>
+            <tr><td>Arrow keys</td><td>Nudge (Shift = bigger step)</td></tr>
+            <tr><td>Esc</td><td>Cancel / deselect / close</td></tr>
+            <tr><td>Cmd/Ctrl + A</td><td>Select all</td></tr>
+            <tr><td>Cmd/Ctrl + C</td><td>Copy selected</td></tr>
+            <tr><td>Cmd/Ctrl + X</td><td>Cut selected</td></tr>
+            <tr><td>Cmd/Ctrl + V</td><td>Paste</td></tr>
+            <tr><td>Cmd/Ctrl + D</td><td>Duplicate</td></tr>
+            <tr><td>Cmd/Ctrl + Z</td><td>Undo</td></tr>
+            <tr><td>Cmd/Ctrl + Shift + Z</td><td>Redo (or Ctrl + Y)</td></tr>
+            <tr><td>Cmd/Ctrl + F</td><td>Search nodes</td></tr>
+            <tr><td>Cmd/Ctrl + O</td><td>Open file…</td></tr>
+            <tr><td>Cmd/Ctrl + S</td><td>Save</td></tr>
+            <tr><td>Cmd/Ctrl + Shift + S</td><td>Save As…</td></tr>
+          </table>
+        </div>
+      </details>
+
+      <details class="help-section">
+        <summary>Theme, fullscreen, layout</summary>
+        <div class="help-body">
+          <p><strong>Theme</strong> — <span class="kbd">🌙 / ☀</span> in the header toggles dark / light. Persists.</p>
+          <p><strong>Tools collapse</strong> — <span class="kbd">⌃</span> hides just the toolbar.</p>
+          <p><strong>Fullscreen</strong> — <span class="kbd">⛶</span> hides the header + toolbar. A floating <strong>+ Add</strong> button stays in the top-left so you can keep adding nodes.</p>
+          <p><strong>Right panel</strong> — click <span class="kbd">›</span> to hide it; on desktop a small rail shows the tabs, on mobile the tab strip stays at the bottom. Tap any tab to expand.</p>
+          <p><strong>Auto-save</strong> — every change is written to localStorage in the background. Use Save / Save As to also write to a real file on disk.</p>
+        </div>
+      </details>
     `;
     return;
   }
@@ -3011,6 +3267,11 @@ function applyPanelCollapsed(collapsed) {
   state.panelCollapsed = collapsed;
   const panel = document.getElementById('right-panel');
   if (panel) panel.classList.toggle('collapsed', collapsed);
+  const btn = document.getElementById('panel-collapse-btn');
+  if (btn) {
+    btn.textContent = collapsed ? '‹' : '›';
+    btn.title = collapsed ? 'Show panel' : 'Hide panel';
+  }
   // Only persist on desktop — mobile session always defaults collapsed
   if (!isMobileViewport()) {
     try { localStorage.setItem('flowspec.panelCollapsed', collapsed ? '1' : '0'); } catch(e) {}
@@ -3018,7 +3279,7 @@ function applyPanelCollapsed(collapsed) {
 }
 function togglePanel() { applyPanelCollapsed(!state.panelCollapsed); }
 
-document.getElementById('panel-collapse-btn').addEventListener('click', () => applyPanelCollapsed(true));
+document.getElementById('panel-collapse-btn').addEventListener('click', () => applyPanelCollapsed(!state.panelCollapsed));
 document.getElementById('rail-expand').addEventListener('click', () => applyPanelCollapsed(false));
 document.querySelectorAll('.panel-collapsed-rail .rail-tab').forEach(b => {
   b.addEventListener('click', () => {

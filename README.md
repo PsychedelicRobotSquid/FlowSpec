@@ -1,112 +1,168 @@
 # FlowSpec
 
-A visual flowchart builder that outputs LLM-friendly structured text.
+**visual → spec**
 
-Drag-and-drop boxes onto a canvas, connect them, label them — and as you build, the side panel streams out a clean structured spec you can paste straight into an AI prompt. Designed for the gap between "tools you draw in" (Excalidraw, draw.io, Whimsical) and "tools that output text an LLM can understand."
+A single-file flowchart builder that turns visual diagrams into clean structured text. Build app flows, decision trees, data pipelines, or file structures, then export the spec as Markdown, narrative prose, an ASCII folder tree, JSON, or Mermaid. Runs in any modern browser, works offline, dark mode by default.
 
-> No installation. No build step. No dependencies. One HTML file, opened in any browser.
+> No installation. No build step. No dependencies. One HTML file.
 
-## Why this exists
+Live demo: [https://psychedelicrobotsquid.github.io/flowspec/](https://psychedelicrobotsquid.github.io/flowspec/)
 
-Most visual diagramming tools export images or proprietary formats. When you want to describe a flow to an LLM, you end up either:
+---
 
-1. Writing it out by hand as prose (slow, error-prone)
-2. Generating Mermaid syntax (text-first, not visual)
-3. Exporting an image and uploading it (works, but the LLM has to re-derive structure)
+## Why
 
-FlowSpec inverts the workflow: **lay it out visually, get clean text out.** The output is structured Markdown by default — node list, connections list, plus an ASCII tree of the flow — exactly what an LLM needs to understand structure without ambiguity.
+Most diagramming tools (Excalidraw, draw.io, Whimsical) export images or proprietary formats. When you want to *describe* a flow — to a teammate, to a doc, to an AI, to your future self — you end up writing it out by hand. FlowSpec inverts that: lay it out visually, copy clean text out.
+
+---
 
 ## Features
 
-- **Visual canvas** with drag-to-move nodes, connect-with-clicks, and grid snapping
+### Editor
 - **8 node types** — Start, Process, Decision, End, Folder, File/Data, Screen, Note — each with distinct shapes and colors
-- **Multi-select** via marquee drag or shift-click, with align and distribute tools
-- **Pan & zoom-style navigation** — hold Space to pan, or toggle the Pan tool
-- **Undo / redo** — 50 steps, keyboard shortcuts
-- **Live text output** in 5 formats — Structured Markdown, Narrative, Folder tree (ASCII), JSON, Mermaid
-- **Multi-project workspace** — keep several flows, switch between them, all auto-saved to your browser
-- **Import / export** as JSON for backup, sharing, or version control
-- **Zero dependencies** — pure HTML, CSS, and vanilla JavaScript. Works offline.
+- **Per-node sizing** (Small / Medium / Large), labels (multi-line), and descriptions
+- **Drag-to-connect** — drag from handles on a selected node to any other node
+- **Multi-select** — marquee drag or Shift-click, with align + distribute tools
+- **Copy / cut / paste / duplicate** (Cmd/Ctrl + C / X / V / D), works across projects
+- **Undo / redo** (Cmd/Ctrl + Z) — up to 50 steps
+- **Quick-add hotkeys** — press 1–8 to add a node of that type
+- **Alignment guides** — dashed snap lines appear when you drag a node near another's edges or center
+- **Auto-layout** (`▦ Tidy` or `L`) — one-click top-down layered arrangement
+- **Right-click / long-press** context menus on nodes, edges, and the canvas
+- **Search** (Cmd/Ctrl + F) — find nodes by label or description
 
-## Quick start
+### Canvas
+- **Pan** — hold Space + drag (or one-finger drag on touch)
+- **Zoom** — hold Z + scroll, Ctrl + scroll, or pinch on a trackpad / touchscreen
+- **Fit-to-content** (`⊡` or `F`) and Reset view (`⊙`)
+- **Fullscreen** mode (`⛶`) hides all chrome; floating Add menu stays accessible
 
-1. Download `flowspec.html`
-2. Open it in any modern browser (Chrome, Firefox, Safari, Edge)
-3. Build your flow
-4. Copy the text output and paste it into your AI prompt
+### Files
+- Each project can be **linked to a `.flowspec.json` file on disk** — Open, Save, Save As behave like a real document editor (Cmd/Ctrl + O / S / Shift+S)
+- **Linked-file chip** next to the title shows the link; **• dirty indicator** when in-memory differs from disk
+- **Auto-save to localStorage** runs in the background — a crash-safety net independent of disk saves
+- Multi-project workspace; switch between projects without losing any state
+- **5 project templates** to start from: Login flow, Data pipeline, File / folder structure, Request-with-retry, Decision tree
 
-That's it. Your work auto-saves to `localStorage`, so you can close the tab and come back.
+### Spec output (the point of the tool)
+- **5 formats** in the Spec tab: Structured Markdown, Narrative, Folder tree (ASCII), JSON, Mermaid
+- **Copy** to clipboard or **Save…** the spec to a file — when the project is linked, the save dialog opens next to the `.flowspec.json`
+
+### Export
+- **JSON copy** — download a `.flowspec.json` without changing the linked file
+- **PNG image** — rasterized chart for docs, Slack, presentations
+
+### Look & feel
+- **Dark mode by default**, light theme one click away
+- **Mobile-friendly** — pointer events, pinch + two-finger pan, responsive layout with a compact 1-row header and bottom-drawer side panel
+- **Keyboard-first** — everything has a shortcut
+- **Selection glow** so the active node is unmistakable in dark mode
+
+### Zero dependencies
+Pure HTML, CSS, vanilla JavaScript. Single file. Works offline. No tracking, no analytics, no network calls.
+
+---
 
 ## Output formats
 
 | Format | What it's good for |
 |---|---|
-| **Structured Markdown** | The default. Best for pasting into Claude/ChatGPT as a spec. Lists nodes by type, all connections enumerated, plus an ASCII tree. |
+| **Structured Markdown** | The default. Clean hierarchy, all nodes and connections enumerated, plus an ASCII tree of the flow. Best for documentation or AI prompts. |
 | **Narrative** | Prose per node ("Authenticate: POST /auth, store token. Leads to: Show dashboard."). Good when intent matters more than structure. |
-| **Folder tree (ASCII)** | `tree`-style folder layout. Drop in Folder and File/Data nodes, connect parents → children, and get clean directory structure. |
-| **JSON** | Machine-readable. Feed into scripts, version-control your specs, or have an LLM generate code from the graph. |
-| **Mermaid** | The standard Mermaid `flowchart TD` syntax. Paste into GitHub READMEs, Notion, or any Mermaid renderer to display the diagram. |
+| **Folder tree (ASCII)** | `tree`-style folder layout. Drop in Folder and File/Data nodes, connect parents → children, get clean directory output. |
+| **JSON** | Machine-readable, no layout info. Feed into scripts or have an LLM generate code from the graph. |
+| **Mermaid** | Standard `flowchart TD` syntax. Paste into GitHub READMEs, Notion, or any Mermaid renderer. |
+
+---
+
+## File format
+
+The project file (`.flowspec.json`, also produced by the header **⤓ Export → JSON copy**) is the round-trip format — it preserves positions, sizes, descriptions, edge IDs, and any other state needed to reopen the project exactly as you left it.
+
+The **Spec tab's** JSON format is intentionally minimal (just `id` / `type` / `label` / `description` / edges) and is meant to be machine-readable text for downstream tools or AI prompts, not a backup.
+
+---
 
 ## Keyboard shortcuts
 
 | Key | Action |
 |---|---|
+| `1`–`8` | Add a node of that type |
 | `C` | Toggle Connect mode |
-| `Space` (hold) + drag | Pan canvas |
-| `Shift` + click | Add/remove node from selection |
-| `Cmd/Ctrl` + `A` | Select all nodes |
-| `Cmd/Ctrl` + `Z` | Undo |
-| `Cmd/Ctrl` + `Shift` + `Z` (or `Ctrl` + `Y`) | Redo |
+| `F` | Fit to content |
+| `L` | Auto-layout (Tidy) |
+| `Z` + scroll | Zoom in / out (cursor-anchored) |
+| `Ctrl` + scroll *(or pinch)* | Zoom in / out |
+| `Space` + drag | Pan canvas |
+| Arrow keys | Nudge selected nodes (Shift = bigger step) |
 | `Delete` / `Backspace` | Delete selection |
-| `Esc` | Cancel current mode / clear selection / close dialog |
+| `Esc` | Cancel mode / deselect / close menu |
+| `Cmd/Ctrl` + `A` | Select all |
+| `Cmd/Ctrl` + `C` / `X` / `V` | Copy / Cut / Paste |
+| `Cmd/Ctrl` + `D` | Duplicate |
+| `Cmd/Ctrl` + `Z` / `Shift+Z` | Undo / Redo |
+| `Cmd/Ctrl` + `F` | Search nodes |
+| `Cmd/Ctrl` + `O` | Open file… |
+| `Cmd/Ctrl` + `S` / `Shift+S` | Save / Save As… |
 
-## Example workflow
+---
 
-You want Claude to scaffold an Expo TypeScript app. Instead of writing out the file structure in prose:
+## Mobile gestures
 
-1. Open FlowSpec
-2. Drop in a few Folder nodes: `src/`, `screens/`, `components/`
-3. Drop in File/Data nodes for files: `App.tsx`, `Button.tsx`, etc.
-4. Connect parents to children
-5. Switch the output format to **Folder tree (ASCII)**
-6. Copy and paste into your prompt:
+| Gesture | Action |
+|---|---|
+| 1-finger drag on canvas | Pan |
+| 1-finger drag on a node | Move the node |
+| Tap a node / edge | Select |
+| 2-finger pinch | Zoom |
+| 2-finger drag | Pan + zoom together |
+| Long-press (½ sec) | Open context menu |
 
+---
+
+## Run it locally
+
+Just open `index.html` in your browser — that's the whole app.
+
+```bash
+git clone https://github.com/PsychedelicRobotSquid/flowspec.git
+cd flowspec
+# Then open index.html in your browser, or:
+python3 -m http.server 8000   # serve at http://localhost:8000
 ```
-project-root/
-├── src/
-│   ├── components/
-│   │   ├── Button.tsx
-│   │   └── Modal.tsx
-│   └── App.tsx
-└── README.md
-```
 
-For app/program flows, use Start, Decision, Process, Screen, and End nodes, then copy the **Structured Markdown** output.
+No build, no install. Your projects are stored in browser `localStorage` and (optionally) in `.flowspec.json` files on disk that you choose.
+
+---
+
+## Hosting
+
+To share with friends, deploy as a static site:
+
+- **GitHub Pages** — Settings → Pages → Deploy from branch `main` / root → done. Live within ~30 seconds.
+- **Netlify / Cloudflare Pages / Vercel** — drag-and-drop the file, or connect this repo. All free.
+
+The app is one HTML file, so anywhere that hosts static files works.
+
+---
+
+## Browser support
+
+- **Chrome / Edge** — full feature set, including in-place file saving via the File System Access API
+- **Firefox / Safari** — everything works, file save / open fall back to download / file-picker dialogs
+- **iOS Safari** — pinch, pan, drag, full editor; file save = browser download
+
+---
 
 ## Tech notes
 
-- Single HTML file (`flowspec.html`), ~2000 lines including CSS and JS
-- No build, no bundler, no dependencies
-- SVG-based canvas; positions stored as world coordinates
-- Auto-saves to `localStorage` under the key `flowspec.workspace.v1`
-- Migration is automatic if you used an older single-project version
+- Single HTML file, ~3000 lines including CSS and JS
+- SVG-based canvas; positions stored as world coordinates with separate pan/zoom
+- Auto-saves to `localStorage` under `flowspec.workspace.v1`; per-project file handles in IndexedDB
+- Pointer Events throughout — one input model for mouse, touch, stylus
 
-## Roadmap ideas
-
-Things that aren't built but might be:
-
-- Auto-layout (right now node positions are fully manual)
-- Zoom controls (the existing pan handles navigation but doesn't scale)
-- Image export (PNG/SVG of the canvas itself)
-- Edge routing improvements (curves for overlapping connections)
-- Templates library (common flow patterns as one-click starters)
-
-PRs welcome.
+---
 
 ## License
 
 MIT — do whatever you want with it.
-
-## Credits
-
-Built with [Claude](https://claude.ai) in a few back-and-forth iterations.
