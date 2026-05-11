@@ -2,6 +2,19 @@
 
 All notable changes to FlowSpec. Format roughly follows [Keep a Changelog](https://keepachangelog.com/). Versioning is loose pre-1.0 — minor bumps for feature batches, patch bumps for fixes.
 
+## [0.14.0] — 2026-05-11
+
+### Added
+- **Mobile marquee select** — long-press on empty canvas → context menu → `▭ Select region…` arms a one-shot marquee. Next finger-down on canvas starts the box at that point, drag expands it, lift finalizes. Mode auto-clears after one use
+- **Tap-to-deselect on mobile** — a touch on empty canvas with no significant drag (< 5px) now clears the current selection, matching desktop click-empty behavior
+- **Fullscreen floating mini-toolbar** — top-left now has a row of `+ Add ▾ / ▢ Frame / ▦ Tidy / ⊡ Fit / ⊙ Reset` buttons so you don't have to exit fullscreen for common actions
+
+### Changed
+- **Zoom minimum lowered to 5%** (was 20%). You can now zoom way out to see the whole layout of a big flow
+
+### Fixed
+- **Initial mobile centering** — on first load, mobile viewports often report a too-tall size while the browser chrome (URL bar, etc.) is still settling, so `fitToContent` landed slightly off. A second pass runs 200ms after init to re-center once layout has stabilized
+
 ## [0.13.0] — 2026-05-11
 
 ### Added

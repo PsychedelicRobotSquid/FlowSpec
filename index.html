@@ -915,13 +915,15 @@
   }
   .floating-exit-fs:hover { background: rgba(0,0,0,0.7); }
   body.fullscreen .floating-exit-fs { display: inline-flex; align-items: center; gap: 4px; }
-  .floating-add-fs {
+  .floating-fs-tools {
     position: fixed; top: 8px; left: 8px;
     z-index: 60;
     display: none;
+    gap: 4px;
+    align-items: center;
   }
-  body.fullscreen .floating-add-fs { display: inline-block; }
-  .floating-add-btn {
+  body.fullscreen .floating-fs-tools { display: flex; }
+  .floating-fs-tool {
     background: rgba(0,0,0,0.55);
     color: #fff;
     border: 1px solid rgba(255,255,255,0.18);
@@ -929,8 +931,12 @@
     padding: 6px 12px; font-size: 14px;
     cursor: pointer; font-family: inherit;
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    line-height: 1;
   }
-  .floating-add-btn:hover { background: rgba(0,0,0,0.7); }
+  .floating-fs-tool:hover { background: rgba(0,0,0,0.7); }
+  @media (pointer: coarse) {
+    .floating-fs-tool { padding: 9px 14px; font-size: 15px; }
+  }
 
   /* Touch-friendly tap targets on coarse pointers (phones, tablets) */
   @media (pointer: coarse) {
@@ -1114,6 +1120,18 @@
   </div>
 </header>
 <button class="floating-exit-fs" id="exit-fullscreen-btn" title="Exit fullscreen">⛶ Exit</button>
+<div class="floating-fs-tools" id="floating-fs-tools">
+  <div class="dropdown" id="floating-add-dropdown">
+    <button class="floating-fs-tool" id="floating-add-btn" title="Add a node">+ Add ▾</button>
+    <div class="dropdown-menu" id="floating-add-menu" style="left:0; right:auto; top:100%; margin-top:6px;">
+      <!-- Filled by JS -->
+    </div>
+  </div>
+  <button class="floating-fs-tool" id="floating-frame-btn" title="Add / wrap frame (G)">▢</button>
+  <button class="floating-fs-tool" id="floating-tidy-btn" title="Tidy / Auto-layout (L)">▦</button>
+  <button class="floating-fs-tool" id="floating-fit-btn" title="Fit all to view (F)">⊡</button>
+  <button class="floating-fs-tool" id="floating-reset-btn" title="Reset view to origin">⊙</button>
+</div>
 <div class="context-menu" id="context-menu"></div>
 <div class="tour-overlay" id="tour-overlay">
   <div class="tour-spotlight" id="tour-spotlight"></div>
@@ -1136,13 +1154,6 @@
   </div>
   <div class="issues-body" id="issues-body"></div>
 </div>
-<div class="floating-add-fs dropdown" id="floating-add-dropdown">
-  <button class="floating-add-btn" id="floating-add-btn" title="Add a node">+ Add</button>
-  <div class="dropdown-menu" id="floating-add-menu" style="left:0; right:auto; top:100%; margin-top:6px;">
-    <!-- Filled by JS -->
-  </div>
-</div>
-
 <div class="toolbar">
   <div class="group">
     <button class="btn icon" id="undo-btn" title="Undo (Cmd/Ctrl+Z)" disabled>↶<span class="btn-label"> Undo</span></button>
@@ -1340,7 +1351,7 @@
 // =============================================================
 // FlowSpec — visual flowchart builder with LLM-friendly text out
 // =============================================================
-const FLOWSPEC_VERSION = '0.13.0';
+const FLOWSPEC_VERSION = '0.14.0';
 
 const NODE_TYPES = {
   start:    { label: 'Start',    color: '#c0dd97', stroke: '#3b6d11', text: '#173404', shape: 'pill',    hint: 'Where the flow begins. Typically one per chart.' },
@@ -1394,6 +1405,7 @@ const state = {
   alignGuides: [],         // [{ type: 'v'|'h', value }] in world coords, visible during drag
   clipboard: null,         // { nodes: [...], edges: [...] } from last copy
   contextMenuWorldPoint: null, // world coords where the context menu was opened (for "Paste here")
+  pendingMarquee: false,   // one-shot: next empty-canvas pointerdown starts a marquee (used for mobile)
 };
 
 function genId(prefix) {
@@ -2523,13 +2535,14 @@ svg.addEventListener('pointerdown', (ev) => {
     return;
   }
 
-  // Touch on empty canvas: pan (not marquee — too easy to trigger by accident)
-  if (isTouchPointer(ev)) {
+  // Touch on empty canvas: pan, unless the user just armed a one-shot marquee
+  // via the long-press menu ("Select region…")
+  if (isTouchPointer(ev) && !state.pendingMarquee) {
     startPan(ev);
     return;
   }
 
-  // Mouse on empty canvas: marquee select
+  // Mouse on empty canvas, or touch when pendingMarquee is set → marquee select
   const wp = worldPoint(ev);
   if (!ev.shiftKey) {
     state.selectedNodeIds.clear();
@@ -2537,6 +2550,7 @@ svg.addEventListener('pointerdown', (ev) => {
     state.selectedFrameIds.clear();
   }
   state.marquee = { x1: wp.x, y1: wp.y, x2: wp.x, y2: wp.y, additive: ev.shiftKey, baseSelection: new Set(state.selectedNodeIds), baseFrameSelection: new Set(state.selectedFrameIds) };
+  state.pendingMarquee = false; // consume the one-shot
   render();
 });
 
@@ -2794,8 +2808,21 @@ function onPointerEnd(ev) {
   }
   // Single-pointer end → finalize whatever was happening
   if (state.isPanning && pointers.size === 0) {
+    // Tap-to-deselect: if the user touched empty canvas and didn't actually
+    // drag (any pointer movement under ~5px), treat as a click and clear
+    // the current selection. Matches the desktop click-empty-canvas behavior.
+    let wasJustTap = false;
+    if (state.panStart) {
+      const dx = ev.clientX - state.panStart.mouseX;
+      const dy = ev.clientY - state.panStart.mouseY;
+      wasJustTap = Math.hypot(dx, dy) < 5;
+    }
     state.isPanning = false;
     state.panStart = null;
+    if (wasJustTap) {
+      const hadSel = state.selectedNodeIds.size > 0 || state.selectedEdgeId || state.selectedFrameIds.size > 0;
+      if (hadSel) clearSelection();
+    }
     render();
     return;
   }
@@ -3305,6 +3332,11 @@ function menuItemsForCanvas() {
     }});
     items.push('sep');
   }
+  items.push({ label: '▭ Select region…', action: () => {
+    state.pendingMarquee = true;
+    setStatus('Drag on the canvas to draw a selection box.');
+  }});
+  items.push('sep');
   items.push({ label: 'Fit to content', action: () => fitToContent() });
   items.push({ label: 'Reset view', action: () => resetView() });
   items.push({ label: 'Auto-layout', action: () => autoLayout() });
@@ -3386,7 +3418,7 @@ function svgPointFromClient(clientPt) {
 }
 
 // ---------- Zoom ----------
-const ZOOM_MIN = 0.2;
+const ZOOM_MIN = 0.05;
 const ZOOM_MAX = 3;
 
 function setZoom(newZoom, anchorScreen) {
@@ -3983,10 +4015,11 @@ function renderPanel() {
           <p><strong>1-finger drag on canvas</strong> — pan</p>
           <p><strong>1-finger drag on a node</strong> — move the node</p>
           <p><strong>Tap a node / edge</strong> — select</p>
+          <p><strong>Tap empty canvas</strong> — deselect</p>
           <p><strong>2-finger pinch</strong> — zoom</p>
           <p><strong>2-finger drag</strong> — pan + zoom together</p>
-          <p><strong>Long-press</strong> — context menu</p>
-          <p>The bottom drawer collapses by default; tap a tab to open. Use <span class="kbd">⌃ Tools</span> to hide the toolbar, or <span class="kbd">⛶</span> for full fullscreen.</p>
+          <p><strong>Long-press</strong> — context menu (includes <strong>▭ Select region…</strong> to draw a marquee with your finger)</p>
+          <p>The bottom drawer collapses by default; tap a tab to open. Use <span class="kbd">⌃ Tools</span> to hide the toolbar, or <span class="kbd">⛶</span> for fullscreen — the top-left floating toolbar in fullscreen keeps + Add / ▢ / ▦ / ⊡ / ⊙ accessible.</p>
         </div>
       </details>
 
@@ -6200,6 +6233,11 @@ wireDropdown('export-dropdown', 'export-menu-btn');
 wireDropdown('more-dropdown', 'more-menu-btn');
 wireDropdown('add-dropdown', 'add-menu-btn');
 wireDropdown('floating-add-dropdown', 'floating-add-btn');
+// Floating fullscreen mini-toolbar — alias the existing handlers
+document.getElementById('floating-frame-btn').addEventListener('click', () => addFrame());
+document.getElementById('floating-tidy-btn').addEventListener('click', () => autoLayout());
+document.getElementById('floating-fit-btn').addEventListener('click', () => fitToContent());
+document.getElementById('floating-reset-btn').addEventListener('click', () => resetView());
 
 // Global click closes any open dropdown
 document.addEventListener('click', (e) => {
@@ -6524,6 +6562,10 @@ if (!loaded) {
   // Center the restored project on the viewport (or center origin if blank)
   fitToContent();
 }
+// Re-fit shortly after layout has stabilized — on mobile the URL bar can
+// shrink, dvh can change, and the initial getBoundingClientRect is sometimes
+// taller than the eventual usable viewport. A second pass nails the centering.
+setTimeout(() => fitToContent(), 200);
 
 // Apply theme button label
 applyTheme(document.documentElement.getAttribute('data-theme') || 'dark');
