@@ -78,10 +78,14 @@
 
   * { box-sizing: border-box; }
   html, body {
-    margin: 0; padding: 0; height: 100%;
+    margin: 0; padding: 0;
+    height: 100%;
+    height: 100dvh;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     background: var(--bg); color: var(--text);
     overflow: hidden;
+    overscroll-behavior: contain;
+    -webkit-text-size-adjust: 100%;
   }
   body { display: flex; flex-direction: column; }
 
@@ -208,7 +212,12 @@
       radial-gradient(circle at 1px 1px, var(--canvas-dot) 1px, transparent 0);
     background-size: 20px 20px;
   }
-  #canvas { width: 100%; height: 100%; cursor: default; display: block; }
+  #canvas {
+    width: 100%; height: 100%; cursor: default; display: block;
+    touch-action: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none;
+  }
   #canvas.connecting { cursor: crosshair; }
   #canvas.pan-ready { cursor: grab; }
   #canvas.panning { cursor: grabbing; }
@@ -440,8 +449,44 @@
 
   /* Responsive: stack on narrow */
   @media (max-width: 800px) {
+    header { flex-wrap: wrap; row-gap: 6px; padding: 8px 10px; }
+    header .title-wrap { flex-basis: 100%; max-width: 100%; order: 2; }
+    header h1 { order: 1; }
+    header .actions { order: 3; flex-basis: 100%; justify-content: flex-start; }
+    .toolbar { padding: 6px 8px; }
     main { flex-direction: column; }
-    aside.panel { width: 100%; min-width: 0; max-height: 200px; border-left: none; border-top: 1px solid var(--border); }
+    aside.panel {
+      width: 100% !important; min-width: 0 !important;
+      max-height: 50dvh;
+      border-left: none; border-top: 1px solid var(--border);
+      transition: max-height 0.18s ease;
+    }
+    aside.panel.collapsed {
+      width: 100% !important; min-width: 0 !important;
+      max-height: 44px !important;
+    }
+    /* At narrow widths, collapsed panel keeps the tab bar visible, not the vertical rail */
+    aside.panel.collapsed .panel-header-row { display: flex !important; }
+    aside.panel.collapsed .panel-collapsed-rail { display: none !important; }
+    aside.panel.collapsed .panel-content { display: none; }
+    /* Project-action buttons always visible on touch */
+    .project-actions { opacity: 1 !important; }
+    /* Dropdown menu spans more width on small screens */
+    .dropdown-menu { right: auto; left: 0; min-width: 240px; }
+  }
+
+  /* Touch-friendly tap targets on coarse pointers (phones, tablets) */
+  @media (pointer: coarse) {
+    .btn { min-height: 40px; padding: 8px 12px; }
+    .btn.icon { min-width: 40px; }
+    .panel-tab { min-height: 44px; padding: 12px 10px; }
+    .project-action { min-height: 36px; padding: 6px 10px; font-size: 12px; }
+    .project-actions { opacity: 1 !important; }
+    .field input, .field select, .field textarea { font-size: 16px; padding: 9px 10px; } /* 16px prevents iOS zoom-on-focus */
+    .title-input { font-size: 16px !important; }
+    .dropdown-item { padding: 10px 12px; min-height: 40px; }
+    .linked-chip { font-size: 12px; padding: 5px 10px; }
+    .modal { width: 96vw !important; max-width: 96vw !important; max-height: 90dvh; }
   }
 
   /* Modal */
@@ -1104,10 +1149,19 @@ function renderEdges() {
       d: path,
       'marker-end': isSel ? 'url(#arrow-sel)' : 'url(#arrow)',
     });
-    hit.addEventListener('mousedown', (ev) => {
-      if (state.mode === 'pan' || state.spaceDown || ev.button === 1) {
-        startPan(ev);
+    hit.addEventListener('pointerdown', (ev) => {
+      pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+      if (pointers.size >= 2) {
+        cancelOngoingOperations();
+        startPinch();
         return;
+      }
+      if (state.mode === 'pan' || state.spaceDown || ev.button === 1 || isTouchPointer(ev) && state.mode !== 'connect') {
+        // Touch on edge falls through to selectEdge (tap to select). Only start pan for actual pan modes.
+        if (state.mode === 'pan' || state.spaceDown || ev.button === 1) {
+          startPan(ev);
+          return;
+        }
       }
       ev.stopPropagation();
       selectEdge(e.id);
@@ -1146,7 +1200,14 @@ function screenToWorld(p) {
 }
 
 function attachNodeHandlers(g, node) {
-  g.addEventListener('mousedown', (ev) => {
+  g.addEventListener('pointerdown', (ev) => {
+    pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    if (pointers.size >= 2) {
+      cancelOngoingOperations();
+      startPinch();
+      ev.stopPropagation();
+      return;
+    }
     ev.stopPropagation();
 
     // Pan takes priority over node interaction
@@ -1230,8 +1291,15 @@ function startPan(ev) {
   render();
 }
 
-svg.addEventListener('mousedown', (ev) => {
-  // Pan mode (toggle or spacebar) on empty canvas → pan
+svg.addEventListener('pointerdown', (ev) => {
+  pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+  if (pointers.size >= 2) {
+    cancelOngoingOperations();
+    startPinch();
+    return;
+  }
+
+  // Pan mode (toggle, spacebar, middle click) on empty canvas → pan
   if (state.mode === 'pan' || state.spaceDown || ev.button === 1) {
     startPan(ev);
     return;
@@ -1244,7 +1312,13 @@ svg.addEventListener('mousedown', (ev) => {
     return;
   }
 
-  // Empty canvas click — start marquee selection
+  // Touch on empty canvas: pan (not marquee — too easy to trigger by accident)
+  if (isTouchPointer(ev)) {
+    startPan(ev);
+    return;
+  }
+
+  // Mouse on empty canvas: marquee select
   const wp = worldPoint(ev);
   if (!ev.shiftKey) {
     state.selectedNodeIds.clear();
@@ -1254,7 +1328,16 @@ svg.addEventListener('mousedown', (ev) => {
   render();
 });
 
-document.addEventListener('mousemove', (ev) => {
+document.addEventListener('pointermove', (ev) => {
+  // Update pointer position if tracked
+  if (pointers.has(ev.pointerId)) {
+    pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+  }
+  // Pinch in progress — handle first, ignore other operations
+  if (pinch && pointers.size >= 2) {
+    updatePinch();
+    return;
+  }
   // Pan in progress
   if (state.isPanning) {
     const p = svgPoint(ev);
@@ -1311,26 +1394,40 @@ document.addEventListener('mousemove', (ev) => {
   }
 });
 
-document.addEventListener('mouseup', (ev) => {
-  if (state.isPanning) {
+function onPointerEnd(ev) {
+  // Remove the pointer that ended
+  pointers.delete(ev.pointerId);
+  // If pinch was active and we now have <2 pointers, end it
+  if (pinch && pointers.size < 2) {
+    endPinch();
+    // If one pointer remains after pinch, don't auto-start a drag —
+    // wait for fresh interaction. Cancel any incidental state.
+    if (pointers.size === 0) cancelOngoingOperations();
+    render();
+    return;
+  }
+  // Single-pointer end → finalize whatever was happening
+  if (state.isPanning && pointers.size === 0) {
     state.isPanning = false;
     state.panStart = null;
     render();
     return;
   }
-  if (state.drag) {
+  if (state.drag && pointers.size === 0) {
     const moved = state.drag.moved;
     state.drag = null;
     if (moved) save();
     render();
     return;
   }
-  if (state.marquee) {
+  if (state.marquee && pointers.size === 0) {
     state.marquee = null;
     render();
     return;
   }
-});
+}
+document.addEventListener('pointerup', onPointerEnd);
+document.addEventListener('pointercancel', onPointerEnd);
 
 document.addEventListener('keydown', (ev) => {
   // Cmd/Ctrl+F always opens search, even when focused in a field
@@ -1550,6 +1647,58 @@ function resetView() {
   state.pan.y = 0;
   state.zoom = 1;
   render();
+}
+
+// ---------- Pointer tracking (mouse + touch + pen) ----------
+const pointers = new Map(); // pointerId -> {x, y}
+
+function isTouchPointer(ev) {
+  return ev.pointerType === 'touch' || ev.pointerType === 'pen';
+}
+function midpoint(a, b) {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+}
+function distance(a, b) {
+  const dx = a.x - b.x, dy = a.y - b.y;
+  return Math.hypot(dx, dy);
+}
+function cancelOngoingOperations() {
+  if (state.drag) state.drag = null;
+  if (state.marquee) state.marquee = null;
+  if (state.isPanning) { state.isPanning = false; state.panStart = null; }
+}
+let pinch = null; // { startDist, startZoom, startMidWorld }
+
+function startPinch() {
+  if (pointers.size < 2) return;
+  const [a, b] = Array.from(pointers.values()).slice(0, 2);
+  const midScreenRel = svgPointFromClient(midpoint(a, b));
+  pinch = {
+    startDist: distance(a, b),
+    startZoom: state.zoom,
+    startMidWorld: screenToWorld(midScreenRel),
+  };
+}
+function updatePinch() {
+  if (!pinch || pointers.size < 2) return;
+  const [a, b] = Array.from(pointers.values()).slice(0, 2);
+  const newDist = distance(a, b);
+  if (pinch.startDist < 1) return;
+  let newZoom = pinch.startZoom * (newDist / pinch.startDist);
+  newZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, newZoom));
+  const newMidScreen = svgPointFromClient(midpoint(a, b));
+  state.zoom = newZoom;
+  state.pan.x = newMidScreen.x - pinch.startMidWorld.x * newZoom;
+  state.pan.y = newMidScreen.y - pinch.startMidWorld.y * newZoom;
+  applyTransform();
+  const zd = document.getElementById('zoom-display');
+  if (zd) zd.textContent = Math.round(state.zoom * 100) + '%';
+}
+function endPinch() { pinch = null; }
+
+function svgPointFromClient(clientPt) {
+  const rect = svg.getBoundingClientRect();
+  return { x: clientPt.x - rect.left, y: clientPt.y - rect.top };
 }
 
 // ---------- Zoom ----------
