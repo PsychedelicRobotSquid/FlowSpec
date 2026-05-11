@@ -2,6 +2,11 @@
 
 All notable changes to FlowSpec. Format roughly follows [Keep a Changelog](https://keepachangelog.com/). Versioning is loose pre-1.0 — minor bumps for feature batches, patch bumps for fixes.
 
+## [0.10.5] — 2026-05-11
+
+### Fixed
+- Delete / Backspace key now deletes a selected frame. The Delete toolbar button already worked; the keydown handler had a stale guard that only fired for nodes / edges
+
 ## [0.10.4] — 2026-05-11
 
 ### Changed

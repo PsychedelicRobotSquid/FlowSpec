@@ -1281,7 +1281,7 @@
 // =============================================================
 // FlowSpec — visual flowchart builder with LLM-friendly text out
 // =============================================================
-const FLOWSPEC_VERSION = '0.10.4';
+const FLOWSPEC_VERSION = '0.10.5';
 
 const NODE_TYPES = {
   start:    { label: 'Start',    color: '#c0dd97', stroke: '#3b6d11', text: '#173404', shape: 'pill',    hint: 'Where the flow begins. Typically one per chart.' },
@@ -2747,7 +2747,7 @@ document.addEventListener('keydown', (ev) => {
     return;
   }
   if (ev.key === 'Delete' || ev.key === 'Backspace') {
-    if (state.selectedNodeIds.size > 0 || state.selectedEdgeId) deleteSelected();
+    if (state.selectedNodeIds.size > 0 || state.selectedEdgeId || state.selectedFrameId) deleteSelected();
   } else if (ev.key === 'Escape') {
     if (state.searchHits.size > 0 && typeof closeSearch === 'function') {
       closeSearch();
