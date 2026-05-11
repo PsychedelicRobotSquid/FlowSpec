@@ -407,7 +407,11 @@
   .node-group { cursor: grab; }
   .node-group:active { cursor: grabbing; }
   .node-group.selected .node-shape {
-    stroke: var(--accent); stroke-width: 2.5;
+    stroke: var(--accent); stroke-width: 3;
+    filter: drop-shadow(0 0 6px var(--accent));
+  }
+  [data-theme="dark"] .node-group.selected .node-shape {
+    filter: drop-shadow(0 0 10px var(--accent)) drop-shadow(0 0 3px var(--accent));
   }
   .node-group.connect-source .node-shape {
     stroke: #5fa5f4; stroke-width: 2.5;
@@ -438,6 +442,9 @@
   .arrow-fill { fill: var(--text-faint); }
   .arrow-fill-sel { fill: var(--accent); }
   .edge-hit { fill: none; stroke: transparent; stroke-width: 12; cursor: pointer; }
+  @media (pointer: coarse) {
+    .edge-hit { stroke-width: 22; }
+  }
   .edge-label {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-size: 11px; font-weight: 500; fill: var(--text);
@@ -488,6 +495,12 @@
   /* Fullscreen mode — hides header + toolbar for max canvas */
   body.fullscreen header,
   body.fullscreen .toolbar { display: none; }
+  /* Tools collapsed — hides just the toolbar (header still visible) */
+  body.tools-collapsed .toolbar { display: none; }
+  /* Hide button text labels at narrow widths — buttons become icon-only */
+  @media (max-width: 800px) {
+    .btn-label { display: none; }
+  }
   .floating-exit-fs {
     position: fixed; top: 8px; right: 8px;
     z-index: 60;
@@ -601,7 +614,7 @@
 <body>
 
 <header>
-  <h1>FlowSpec <span class="tag">visual → LLM text</span></h1>
+  <h1>FlowSpec <span class="tag">visual → spec</span></h1>
   <div class="title-wrap">
     <input type="text" class="title-input" id="title-input" placeholder="Untitled flow" value="Untitled flow">
     <div class="title-meta" id="title-meta">
@@ -614,6 +627,7 @@
   </div>
   <div class="actions">
     <button class="btn icon" id="theme-toggle-btn" title="Toggle dark / light theme">🌙</button>
+    <button class="btn icon" id="tools-toggle-btn" title="Show / hide the toolbar">⌃</button>
     <button class="btn icon" id="fullscreen-btn" title="Hide header & toolbar for more canvas (toggle)">⛶</button>
     <button class="btn desktop-only" id="output-toggle-btn" title="Open the Spec output tab">📄 Spec</button>
     <button class="btn desktop-only" id="projects-btn" title="Manage projects — switch, create, rename, delete">📁 Projects</button>
@@ -648,8 +662,8 @@
 
 <div class="toolbar">
   <div class="group">
-    <button class="btn icon" id="undo-btn" title="Undo (Cmd/Ctrl+Z)" disabled>↶ Undo</button>
-    <button class="btn icon" id="redo-btn" title="Redo (Cmd/Ctrl+Shift+Z)" disabled>↷ Redo</button>
+    <button class="btn icon" id="undo-btn" title="Undo (Cmd/Ctrl+Z)" disabled>↶<span class="btn-label"> Undo</span></button>
+    <button class="btn icon" id="redo-btn" title="Redo (Cmd/Ctrl+Shift+Z)" disabled>↷<span class="btn-label"> Redo</span></button>
   </div>
   <div class="group desktop-only" id="add-nodes-group">
     <!-- Filled by JS -->
@@ -663,14 +677,14 @@
     </div>
   </div>
   <div class="group">
-    <button class="btn" id="connect-btn" title="Click two nodes to connect them (C)">↳ Connect</button>
-    <button class="btn" id="pan-btn" title="Pan the canvas (hold Space to pan temporarily)">✋ Pan</button>
+    <button class="btn" id="connect-btn" title="Click two nodes to connect them (C)">↳<span class="btn-label"> Connect</span></button>
+    <button class="btn" id="pan-btn" title="Pan the canvas (hold Space to pan temporarily)">✋<span class="btn-label"> Pan</span></button>
     <button class="btn icon" id="zoom-out-btn" title="Zoom out (Z + scroll, or Ctrl + scroll)">−</button>
     <span class="zoom-display" id="zoom-display" title="Current zoom — click to reset to 100%">100%</span>
     <button class="btn icon" id="zoom-in-btn" title="Zoom in (Z + scroll, or Ctrl + scroll)">+</button>
-    <button class="btn icon" id="fit-content-btn" title="Fit all nodes to view (F)">⊡ Fit</button>
-    <button class="btn icon" id="reset-view-btn" title="Reset zoom and pan">⊙ Reset</button>
-    <button class="btn danger icon" id="delete-btn" title="Delete selected (Del)" disabled>Delete</button>
+    <button class="btn icon" id="fit-content-btn" title="Fit all nodes to view (F)">⊡<span class="btn-label"> Fit</span></button>
+    <button class="btn icon" id="reset-view-btn" title="Reset zoom and pan">⊙<span class="btn-label"> Reset</span></button>
+    <button class="btn danger icon" id="delete-btn" title="Delete selected (Del)" disabled>🗑<span class="btn-label"> Delete</span></button>
   </div>
   <div class="group" style="margin-left:auto; border-right:none;">
     <span style="font-size:11px; color:var(--text-faint);" id="status-text">Click a node type to add it.</span>
@@ -943,7 +957,12 @@ function nodeSize(node) {
     // Widen a little if description is long-ish, to fit more on a line
     width = Math.max(width, Math.min(260, descChars * 4.5 + 40));
   }
-  if (t.shape === 'diamond') { width += 30; height += 10; }
+  if (t.shape === 'diamond') {
+    // Diamonds taper — give extra space, especially when there's a description
+    const hasDesc = node.description && node.description.trim();
+    width += hasDesc ? 70 : 30;
+    height += hasDesc ? 32 : 10;
+  }
   if (t.shape === 'pill') { width = Math.max(width, 120); }
   // Per-node size factor (S/M/L)
   const factor = SIZE_FACTOR[node.size] || 1;
@@ -1161,7 +1180,18 @@ function renderNodes() {
     }, n.label || '(untitled)');
     g.appendChild(label);
     if (hasDesc) {
-      const charsPerLine = Math.max(18, Math.floor((b.w - 16) / (descFontSize * 0.55)));
+      // For diamonds, compute available width at the lowest description line
+      // (where the diamond is narrowest at that vertical offset)
+      let availableWidth;
+      if (t.shape === 'diamond') {
+        const lastLineY = (labelFontSize / 2 + 6) + 1 * (descFontSize + 2);
+        // width of diamond at this y: w * (1 - 2|y|/h)
+        const widthAtLine = b.w * (1 - 2 * lastLineY / b.h);
+        availableWidth = Math.max(60, widthAtLine - 12);
+      } else {
+        availableWidth = b.w - 16;
+      }
+      const charsPerLine = Math.max(14, Math.floor(availableWidth / (descFontSize * 0.55)));
       const descLines = wrapDescription(n.description.trim(), charsPerLine, 2);
       // Slightly muted version of the node's text color for description
       const descColor = t.text;
@@ -3139,6 +3169,20 @@ function toggleFullscreen(force) {
 document.getElementById('fullscreen-btn').addEventListener('click', () => toggleFullscreen());
 document.getElementById('exit-fullscreen-btn').addEventListener('click', () => toggleFullscreen(false));
 
+// Tools toggle (hide just the toolbar, keep header)
+function applyToolsCollapsed(collapsed) {
+  document.body.classList.toggle('tools-collapsed', collapsed);
+  const btn = document.getElementById('tools-toggle-btn');
+  if (btn) btn.textContent = collapsed ? '⌄' : '⌃';
+  // Persist on desktop only — mobile session always defaults collapsed
+  if (!isMobileViewport()) {
+    try { localStorage.setItem('flowspec.toolsCollapsed', collapsed ? '1' : '0'); } catch(e) {}
+  }
+}
+document.getElementById('tools-toggle-btn').addEventListener('click', () => {
+  applyToolsCollapsed(!document.body.classList.contains('tools-collapsed'));
+});
+
 // Save / Open keyboard shortcuts
 document.addEventListener('keydown', (ev) => {
   if (ev.key === 's' && (ev.metaKey || ev.ctrlKey)) {
@@ -3262,6 +3306,16 @@ if (isMobileViewport()) {
     const c = localStorage.getItem('flowspec.panelCollapsed') === '1';
     applyPanelCollapsed(c);
   } catch(e) { applyPanelCollapsed(false); }
+}
+
+// Toolbar collapsed state: mobile defaults collapsed; desktop restores from localStorage
+if (isMobileViewport()) {
+  applyToolsCollapsed(true);
+} else {
+  try {
+    const c = localStorage.getItem('flowspec.toolsCollapsed') === '1';
+    applyToolsCollapsed(c);
+  } catch(e) { applyToolsCollapsed(false); }
 }
 
 // One-time cleanup of obsolete IndexedDB keys (workspace dir handle, per-project dir handles)
