@@ -3850,14 +3850,9 @@ function renderPanel() {
       <div class="empty-state">
         <p>Nothing selected.</p>
         <p>Click a node-type button above to add a node, drag empty canvas to marquee-select, or click an existing node or edge to edit it.</p>
-        <p style="margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border);">
-          Or — <button type="button" class="link-btn" id="empty-state-ai">🤖 generate a flow with AI ✨</button>
-        </p>
         <p style="margin-top:14px;"><strong>Nodes:</strong> ${state.nodes.length}<br><strong>Connections:</strong> ${state.edges.length}</p>
       </div>
     `;
-    const aiLink = document.getElementById('empty-state-ai');
-    if (aiLink) aiLink.addEventListener('click', openAiModal);
     return;
   }
 
