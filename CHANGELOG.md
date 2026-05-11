@@ -2,6 +2,18 @@
 
 All notable changes to FlowSpec. Format roughly follows [Keep a Changelog](https://keepachangelog.com/). Versioning is loose pre-1.0 — minor bumps for feature batches, patch bumps for fixes.
 
+## [0.10.2] — 2026-05-11
+
+### Changed
+- **Auto-layout is now scoped + frame-aware** so it stops trampling carefully-arranged flows:
+  - If anything is selected, Tidy operates **only on the selection** — useful for laying out a sub-graph without disturbing the rest
+  - If nothing is selected, Tidy skips every node that's currently inside any frame. Frames are treated as manually-laid-out regions
+  - Confirms before tidying > 80 nodes when nothing is selected
+- **Width-aware spacing** — horizontal placement uses each node's actual width plus a 40px gutter, so wide / Large / long-described nodes no longer overlap their neighbors
+- **Tall-aware spacing** — vertical placement uses the tallest node in each layer
+- **Centered on original position** — the laid-out block is centered on the current centroid of the target nodes, so things stay near where they were instead of teleporting
+- **Collision-resolve pass** — after placement, any remaining overlapping bounding boxes get nudged apart (bounded at 20 iterations)
+
 ## [0.10.1] — 2026-05-11
 
 ### Fixed

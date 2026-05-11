@@ -1281,7 +1281,7 @@
 // =============================================================
 // FlowSpec — visual flowchart builder with LLM-friendly text out
 // =============================================================
-const FLOWSPEC_VERSION = '0.10.1';
+const FLOWSPEC_VERSION = '0.10.2';
 
 const NODE_TYPES = {
   start:    { label: 'Start',    color: '#c0dd97', stroke: '#3b6d11', text: '#173404', shape: 'pill',    hint: 'Where the flow begins. Typically one per chart.' },
@@ -3422,38 +3422,61 @@ function updateIssuesUI() {
 }
 
 // ---------- Auto-layout ----------
-// Layered top-to-bottom layout. Roots (no incoming edges) on top; layers below.
-// Nodes within a layer spread horizontally based on the average parent position
-// (barycentric heuristic) to keep edges from crossing too much.
+// Layered top-to-bottom layout, scoped to either the current selection or
+// (if nothing is selected) all nodes that are NOT inside any frame.
+// Framed nodes count as "already laid out by you" and are left alone.
 function autoLayout() {
   if (state.nodes.length === 0) return;
-  snapshot();
 
-  // Build adjacency
+  // 1) Determine which nodes to lay out
+  const hasSelection = state.selectedNodeIds.size > 0;
+  let targetNodes;
+  if (hasSelection) {
+    targetNodes = state.nodes.filter(n => state.selectedNodeIds.has(n.id));
+  } else {
+    const inAnyFrame = (n) => state.frames.some(f =>
+      n.x >= f.x && n.x <= f.x + f.w && n.y >= f.y && n.y <= f.y + f.h);
+    targetNodes = state.nodes.filter(n => !inAnyFrame(n));
+    if (targetNodes.length > 80) {
+      if (!confirm(`Tidy will rearrange ${targetNodes.length} nodes. Continue?`)) return;
+    }
+  }
+  if (targetNodes.length === 0) {
+    setStatus(hasSelection
+      ? 'Nothing selected to tidy.'
+      : 'Nothing to tidy — every node is inside a frame.');
+    return;
+  }
+  if (targetNodes.length === 1) {
+    setStatus('Only one node — nothing to tidy.');
+    return;
+  }
+
+  snapshot();
+  const targetIds = new Set(targetNodes.map(n => n.id));
+
+  // 2) Build adjacency over the target subgraph only
   const incoming = new Map();
   const outgoing = new Map();
-  for (const n of state.nodes) { incoming.set(n.id, []); outgoing.set(n.id, []); }
+  for (const n of targetNodes) { incoming.set(n.id, []); outgoing.set(n.id, []); }
   for (const e of state.edges) {
-    if (outgoing.has(e.source)) outgoing.get(e.source).push(e.target);
-    if (incoming.has(e.target)) incoming.get(e.target).push(e.source);
+    if (!targetIds.has(e.source) || !targetIds.has(e.target)) continue;
+    outgoing.get(e.source).push(e.target);
+    incoming.get(e.target).push(e.source);
   }
 
-  // Roots: no incoming edges (preferring start/folder nodes if multiple)
-  let roots = state.nodes.filter(n => incoming.get(n.id).length === 0);
+  // 3) Roots — nodes within the target set that have no incoming edge (within target set)
+  let roots = targetNodes.filter(n => incoming.get(n.id).length === 0);
   if (roots.length === 0) {
-    // All nodes are in a cycle; pick the node(s) with fewest incoming
-    const minIn = Math.min(...state.nodes.map(n => incoming.get(n.id).length));
-    roots = state.nodes.filter(n => incoming.get(n.id).length === minIn);
+    const minIn = Math.min(...targetNodes.map(n => incoming.get(n.id).length));
+    roots = targetNodes.filter(n => incoming.get(n.id).length === minIn);
   }
-  // Stable order for roots
   roots.sort((a, b) => {
     const rank = { start: 0, folder: 1 };
     return (rank[a.type] ?? 10) - (rank[b.type] ?? 10);
   });
 
-  // BFS layer assignment (longest path from any root).
-  // Each node's layer can be updated at most N times — caps the work at O(N²)
-  // and guarantees termination on graphs with cycles or back-edges.
+  // 4) BFS layer assignment with cycle guard
   const layer = new Map();
   const updateCount = new Map();
   const queue = [];
@@ -3462,7 +3485,7 @@ function autoLayout() {
     updateCount.set(r.id, 1);
     queue.push(r.id);
   }
-  const maxUpdatesPerNode = state.nodes.length;
+  const maxUpdates = targetNodes.length;
   while (queue.length) {
     const id = queue.shift();
     const d = layer.get(id);
@@ -3470,33 +3493,29 @@ function autoLayout() {
       const cur = layer.get(t);
       if (cur === undefined || cur < d + 1) {
         const u = (updateCount.get(t) || 0) + 1;
-        if (u > maxUpdatesPerNode) continue; // cycle guard — stop re-propagating
+        if (u > maxUpdates) continue;
         updateCount.set(t, u);
         layer.set(t, d + 1);
         queue.push(t);
       }
     }
   }
-  for (const n of state.nodes) if (!layer.has(n.id)) layer.set(n.id, 0);
+  for (const n of targetNodes) if (!layer.has(n.id)) layer.set(n.id, 0);
 
-  // Group nodes by layer
+  // 5) Group + barycentric ordering within each layer
   const layers = new Map();
-  for (const n of state.nodes) {
+  for (const n of targetNodes) {
     const l = layer.get(n.id);
     if (!layers.has(l)) layers.set(l, []);
     layers.get(l).push(n);
   }
   const sortedLayers = Array.from(layers.entries()).sort((a, b) => a[0] - b[0]);
-
-  // Within-layer ordering using barycentric heuristic on the previous layer's positions
-  // First pass: keep input order for layer 0
-  const orderInLayer = new Map(); // nodeId -> index within layer
+  const orderInLayer = new Map();
   sortedLayers.forEach(([l, nodes]) => {
     if (l === 0) {
       nodes.forEach((n, i) => orderInLayer.set(n.id, i));
       return;
     }
-    // Average parent index in previous layer (use orderInLayer values)
     const scored = nodes.map(n => {
       const parents = incoming.get(n.id) || [];
       const positions = parents.map(p => orderInLayer.get(p)).filter(v => v !== undefined);
@@ -3509,25 +3528,77 @@ function autoLayout() {
     scored.forEach(s => nodes.push(s.n));
   });
 
-  // Now place nodes
-  const SPACING_Y = 140;
-  const SPACING_X = 200;
-  const TOP = 80;
-  // Width of the widest layer determines centering
-  const widest = Math.max(...sortedLayers.map(([, nodes]) => nodes.length));
-  for (const [l, nodes] of sortedLayers) {
-    const y = TOP + l * SPACING_Y;
-    const totalWidth = (nodes.length - 1) * SPACING_X;
-    const startX = -totalWidth / 2;
-    nodes.forEach((n, i) => {
-      n.x = Math.round((startX + i * SPACING_X) / 10) * 10;
-      n.y = Math.round(y / 10) * 10;
-    });
+  // 6) Width-aware placement
+  const H_GUTTER = 40;
+  const V_GUTTER = 60;
+  const sizeOf = new Map();
+  for (const n of targetNodes) sizeOf.set(n.id, nodeSize(n));
+
+  const layerInfo = sortedLayers.map(([l, nodes]) => {
+    let totalW = 0, maxH = 0;
+    for (const n of nodes) {
+      const s = sizeOf.get(n.id);
+      totalW += s.width;
+      if (s.height > maxH) maxH = s.height;
+    }
+    totalW += (nodes.length - 1) * H_GUTTER;
+    return { l, nodes, totalW, maxH };
+  });
+
+  // Center the laid-out block on the target's current centroid so it stays near
+  // where it was (especially useful when only a subset is being tidied)
+  const cx0 = targetNodes.reduce((s, n) => s + n.x, 0) / targetNodes.length;
+  const cy0 = targetNodes.reduce((s, n) => s + n.y, 0) / targetNodes.length;
+  const totalH = layerInfo.reduce((s, info) => s + info.maxH, 0) + (layerInfo.length - 1) * V_GUTTER;
+  let y = cy0 - totalH / 2;
+  for (const info of layerInfo) {
+    const centerY = y + info.maxH / 2;
+    let x = cx0 - info.totalW / 2;
+    for (const n of info.nodes) {
+      const s = sizeOf.get(n.id);
+      n.x = Math.round((x + s.width / 2) / 10) * 10;
+      n.y = Math.round(centerY / 10) * 10;
+      x += s.width + H_GUTTER;
+    }
+    y += info.maxH + V_GUTTER;
   }
+
+  // 7) Collision-resolve pass — catches edge cases (very wide descriptions etc.)
+  resolveOverlaps(targetNodes, sizeOf);
 
   save();
   fitToContent();
-  setStatus('Auto-layout applied.');
+  setStatus(`Tidied ${targetNodes.length} node${targetNodes.length===1?'':'s'}.`);
+}
+
+// Iterative push: if two node bounding boxes overlap, nudge the right-most
+// node further right by enough to clear, snapped to 10px grid. Bounded at
+// 20 iterations so it can't run away.
+function resolveOverlaps(nodes, sizeOf) {
+  const maxIter = 20;
+  for (let iter = 0; iter < maxIter; iter++) {
+    let moved = false;
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const a = nodes[i], b = nodes[j];
+        const sa = sizeOf.get(a.id) || nodeSize(a);
+        const sb = sizeOf.get(b.id) || nodeSize(b);
+        const aL = a.x - sa.width/2, aR = a.x + sa.width/2;
+        const aT = a.y - sa.height/2, aB = a.y + sa.height/2;
+        const bL = b.x - sb.width/2, bR = b.x + sb.width/2;
+        const bT = b.y - sb.height/2, bB = b.y + sb.height/2;
+        const overlapX = Math.min(aR, bR) - Math.max(aL, bL);
+        const overlapY = Math.min(aB, bB) - Math.max(aT, bT);
+        if (overlapX > 0 && overlapY > 0) {
+          const push = Math.ceil((overlapX + 20) / 10) * 10;
+          if (a.x < b.x) b.x += push;
+          else a.x += push;
+          moved = true;
+        }
+      }
+    }
+    if (!moved) break;
+  }
 }
 
 function fitToContent(padding = 60) {
