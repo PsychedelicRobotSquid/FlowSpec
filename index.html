@@ -259,6 +259,19 @@
     stroke-dasharray: 4 3;
     pointer-events: none;
   }
+  .origin-rect {
+    fill: none;
+    stroke: var(--text-faint);
+    stroke-width: 1;
+    opacity: 0.18;
+    pointer-events: none;
+    vector-effect: non-scaling-stroke;
+  }
+  .origin-dot {
+    fill: var(--text-faint);
+    opacity: 0.35;
+    pointer-events: none;
+  }
   #canvas-wrap .hint {
     position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
     background: rgba(0,0,0,0.85); color: #fff;
@@ -1141,6 +1154,10 @@
           <path d="M 0 0 L 10 5 L 0 10 z" class="arrow-fill-sel"/>
         </marker>
       </defs>
+      <g id="origin-layer">
+        <rect class="origin-rect" x="-400" y="-300" width="800" height="600" />
+        <circle class="origin-dot" cx="0" cy="0" r="3" />
+      </g>
       <g id="frames-layer"></g>
       <g id="edges-layer"></g>
       <g id="nodes-layer"></g>
@@ -1281,7 +1298,7 @@
 // =============================================================
 // FlowSpec — visual flowchart builder with LLM-friendly text out
 // =============================================================
-const FLOWSPEC_VERSION = '0.11.0';
+const FLOWSPEC_VERSION = '0.12.0';
 
 const NODE_TYPES = {
   start:    { label: 'Start',    color: '#c0dd97', stroke: '#3b6d11', text: '#173404', shape: 'pill',    hint: 'Where the flow begins. Typically one per chart.' },
@@ -1556,6 +1573,7 @@ function edgeStart(fromNode, toNode) {
 
 // ---------- DOM helpers ----------
 const svg = document.getElementById('canvas');
+const originLayer = document.getElementById('origin-layer');
 const framesLayer = document.getElementById('frames-layer');
 const edgesLayer = document.getElementById('edges-layer');
 const nodesLayer = document.getElementById('nodes-layer');
@@ -1580,6 +1598,7 @@ function el(tag, attrs = {}, ...children) {
 // ---------- Rendering ----------
 function applyTransform() {
   const t = `translate(${state.pan.x},${state.pan.y}) scale(${state.zoom})`;
+  originLayer.setAttribute('transform', t);
   framesLayer.setAttribute('transform', t);
   edgesLayer.setAttribute('transform', t);
   nodesLayer.setAttribute('transform', t);
@@ -2174,6 +2193,10 @@ function menuItemsForFrame(frameId) {
 }
 
 function addFrame() {
+  // If 2+ nodes are selected, wrap them instead of dropping an empty frame
+  if (state.selectedNodeIds.size >= 2) {
+    return wrapSelectionInFrame();
+  }
   snapshot();
   // Compute world coords for current viewport center; create a default-sized frame
   const rect = svg.getBoundingClientRect();
@@ -2194,6 +2217,45 @@ function addFrame() {
   state.panTab = 'properties';
   save();
   render();
+}
+
+function wrapSelectionInFrame() {
+  if (state.selectedNodeIds.size < 2) return;
+  const sel = Array.from(state.selectedNodeIds)
+    .map(id => state.nodes.find(x => x.id === id))
+    .filter(Boolean);
+  if (sel.length < 2) return;
+  snapshot();
+  // Bounding box of all selected nodes
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const n of sel) {
+    const b = nodeBounds(n);
+    if (b.x < minX) minX = b.x;
+    if (b.y < minY) minY = b.y;
+    if (b.x + b.w > maxX) maxX = b.x + b.w;
+    if (b.y + b.h > maxY) maxY = b.y + b.h;
+  }
+  const PAD = 20;
+  const TITLE = 28;
+  const frame = {
+    id: genId('frame'),
+    title: 'Group',
+    x: Math.floor((minX - PAD) / 10) * 10,
+    y: Math.floor((minY - TITLE) / 10) * 10,
+    w: 0, h: 0,
+  };
+  frame.w = Math.ceil((maxX + PAD) / 10) * 10 - frame.x;
+  frame.h = Math.ceil((maxY + PAD) / 10) * 10 - frame.y;
+  state.frames.push(frame);
+  // Select the new frame, drop node selection
+  state.selectedFrameIds.clear();
+  state.selectedFrameIds.add(frame.id);
+  state.selectedNodeIds.clear();
+  state.selectedEdgeId = null;
+  state.panTab = 'properties';
+  save();
+  render();
+  setStatus(`Wrapped ${sel.length} node${sel.length===1?'':'s'} in a frame.`);
 }
 
 function renderEdges() {
@@ -2786,6 +2848,9 @@ document.addEventListener('keydown', (ev) => {
     fitToContent();
   } else if ((ev.key === 'l' || ev.key === 'L') && !ev.metaKey && !ev.ctrlKey) {
     autoLayout();
+  } else if ((ev.key === 'g' || ev.key === 'G') && !ev.metaKey && !ev.ctrlKey && !ev.shiftKey) {
+    // G: wrap selection in a frame (or add an empty frame if nothing selected)
+    addFrame();
   } else if (/^[1-8]$/.test(ev.key) && !ev.metaKey && !ev.ctrlKey && !ev.shiftKey && !ev.altKey) {
     // Quick-add: 1-8 maps to the 8 node types
     const types = Object.keys(NODE_TYPES);
@@ -3136,6 +3201,12 @@ function menuItemsForNode(nodeId) {
     }});
   }
   items.push('sep');
+  // Wrap-in-frame only when this node is part of a 2+ node selection
+  if (state.selectedNodeIds.has(nodeId) && state.selectedNodeIds.size >= 2) {
+    items.push({ label: `▢ Wrap ${state.selectedNodeIds.size} nodes in frame`, action: () => {
+      wrapSelectionInFrame();
+    }});
+  }
   items.push({ label: 'Connect from this…', action: () => {
     state.mode = 'connect';
     state.connectSource = nodeId;
@@ -3812,10 +3883,20 @@ function renderPanel() {
       </details>
 
       <details class="help-section">
-        <summary>Auto-layout</summary>
+        <summary>Tidy (overlap resolution)</summary>
         <div class="help-body">
-          <p><strong>Tidy up a messy flow</strong> — click <span class="kbd">▦ Tidy</span> (or press <span class="kbd">L</span>). Nodes are arranged top-to-bottom in layers based on connections, with sibling ordering chosen to minimize edge crossings.</p>
-          <p>Works on disconnected sub-graphs too. Undo if you don't like it.</p>
+          <p><strong>Resolve overlaps</strong> — click <span class="kbd">▦ Tidy</span> (or press <span class="kbd">L</span>). Nodes / frames are pushed apart in the direction of smaller overlap with 20px padding. Idempotent — hitting it twice does nothing the second time if everything's already clean.</p>
+          <p>If you have a selection, only those nodes move. Otherwise frames are moved as units (rectangle + every node inside it) and free nodes (outside any frame) are also considered. After per-frame overlap resolution, frames grow to keep their original contents inside.</p>
+        </div>
+      </details>
+
+      <details class="help-section">
+        <summary>Frames / groups</summary>
+        <div class="help-body">
+          <p><strong>Add a frame</strong> — click <span class="kbd">▢ Frame</span> in the toolbar, or press <span class="kbd">G</span>. With 2+ nodes selected, this <em>wraps</em> them in a sized frame; otherwise it drops an empty frame in the center.</p>
+          <p>Right-click a selected node (when 2+ are selected) for <strong>Wrap N nodes in frame</strong>.</p>
+          <p>Drag the frame body to move it — every node inside moves with it. Drag a corner handle to resize. Properties: title, color, delete.</p>
+          <p>Frames are included in Markdown / Narrative / JSON / Mermaid spec outputs (as Groups / subgraphs).</p>
         </div>
       </details>
 
@@ -3846,6 +3927,7 @@ function renderPanel() {
         <div class="help-body">
           <p>The <strong>Spec</strong> tab renders your flow as text in 5 formats: Markdown, Narrative, Folder tree, JSON, or Mermaid. <span class="kbd">Copy</span> to clipboard or <span class="kbd">Save…</span> to a file.</p>
           <p>The header <strong>⤓ Export ▾</strong> menu makes copies that don't change the file link: JSON copy of the project, PNG image of the chart, or jump to the Spec tab.</p>
+          <p><strong>Frames in the output:</strong> Markdown gets a <em>Groups</em> section, Narrative gets a <em>Groups</em> intro, JSON includes a <code>frames</code> array with child node ids, and Mermaid emits each frame as a native <code>subgraph</code> block. Folder tree ignores frames.</p>
           <p><strong>For folder structures:</strong> use Folder + File/Data nodes, connect parents to children, then switch the Spec format to "Folder tree".</p>
         </div>
       </details>
@@ -3871,6 +3953,7 @@ function renderPanel() {
             <tr><td>C</td><td>Toggle Connect mode</td></tr>
             <tr><td>F</td><td>Fit to content</td></tr>
             <tr><td>L</td><td>Auto-layout (Tidy)</td></tr>
+            <tr><td>G</td><td>Wrap selection in frame (or add empty frame)</td></tr>
             <tr><td>Z + scroll</td><td>Zoom in / out</td></tr>
             <tr><td>Space + drag</td><td>Pan</td></tr>
             <tr><td>Delete / Backspace</td><td>Delete selection</td></tr>
@@ -3899,6 +3982,7 @@ function renderPanel() {
           <p><strong>Tools collapse</strong> — <span class="kbd">⌃</span> hides just the toolbar.</p>
           <p><strong>Fullscreen</strong> — <span class="kbd">⛶</span> hides the header + toolbar. A floating <strong>+ Add</strong> button stays in the top-left so you can keep adding nodes.</p>
           <p><strong>Right panel</strong> — click <span class="kbd">›</span> to hide it; on desktop a small rail shows the tabs, on mobile the tab strip stays at the bottom. Tap any tab to expand.</p>
+          <p><strong>Origin marker</strong> — a faint 800×600 rectangle with a small dot marks world (0, 0). It's where <span class="kbd">⊙ Reset</span> snaps you back to. Always visible at low opacity so it never gets in the way.</p>
           <p><strong>Auto-save</strong> — every change is written to localStorage in the background. Use Save / Save As to also write to a real file on disk.</p>
         </div>
       </details>
@@ -4283,11 +4367,31 @@ function renderOutput() {
   out.textContent = txt;
 }
 
+// Compute which nodes fall inside each frame at output time. Returns:
+//   { frameToNodes: Map<frameId, nodeId[]>, nodeToFrame: Map<nodeId, frameId> }
+// Each node is assigned to at most one frame (the first matching frame in
+// state.frames order) so the output structure stays unambiguous.
+function computeFrameMembership() {
+  const frameToNodes = new Map();
+  const nodeToFrame = new Map();
+  for (const f of state.frames) frameToNodes.set(f.id, []);
+  for (const n of state.nodes) {
+    for (const f of state.frames) {
+      if (n.x >= f.x && n.x <= f.x + f.w && n.y >= f.y && n.y <= f.y + f.h) {
+        frameToNodes.get(f.id).push(n.id);
+        nodeToFrame.set(n.id, f.id);
+        break;
+      }
+    }
+  }
+  return { frameToNodes, nodeToFrame };
+}
+
 function formatMarkdown() {
   const lines = [];
   lines.push(`# ${state.title || 'Untitled flow'}`);
   lines.push('');
-  lines.push(`_${state.nodes.length} nodes, ${state.edges.length} connections_`);
+  lines.push(`_${state.nodes.length} nodes, ${state.edges.length} connections${state.frames.length ? ', ' + state.frames.length + ' group' + (state.frames.length===1?'':'s') : ''}_`);
   lines.push('');
 
   // Group nodes by type for readability
@@ -4325,6 +4429,22 @@ function formatMarkdown() {
   }
   lines.push('');
 
+  // Groups (frames)
+  if (state.frames.length > 0) {
+    const { frameToNodes } = computeFrameMembership();
+    lines.push('## Groups');
+    lines.push('');
+    for (const f of state.frames) {
+      const childIds = frameToNodes.get(f.id) || [];
+      const childLabels = childIds
+        .map(id => state.nodes.find(n => n.id === id))
+        .filter(Boolean)
+        .map(n => n.label || '(untitled)');
+      lines.push(`- **${f.title || 'Group'}**${childLabels.length ? ' — ' + childLabels.join(', ') : ' _(empty)_'}`);
+    }
+    lines.push('');
+  }
+
   // Flow summary: find roots (no incoming edges) and traverse
   const summary = computeFlowSummary();
   if (summary) {
@@ -4346,8 +4466,22 @@ function formatNarrative() {
   const parts = [];
   parts.push(`Flow: ${state.title || 'Untitled flow'}`);
   parts.push('');
-  parts.push(`This flow has ${state.nodes.length} step${state.nodes.length === 1 ? '' : 's'} and ${state.edges.length} connection${state.edges.length === 1 ? '' : 's'}.`);
+  parts.push(`This flow has ${state.nodes.length} step${state.nodes.length === 1 ? '' : 's'} and ${state.edges.length} connection${state.edges.length === 1 ? '' : 's'}${state.frames.length ? `, organized into ${state.frames.length} group${state.frames.length===1?'':'s'}` : ''}.`);
   parts.push('');
+  // Groups in this flow
+  if (state.frames.length > 0) {
+    const { frameToNodes } = computeFrameMembership();
+    parts.push('Groups:');
+    for (const f of state.frames) {
+      const childIds = frameToNodes.get(f.id) || [];
+      const names = childIds
+        .map(id => state.nodes.find(n => n.id === id))
+        .filter(Boolean)
+        .map(n => `"${n.label}"`);
+      parts.push(`• ${f.title || 'Group'}: ${names.length ? names.join(', ') : '(empty)'}`);
+    }
+    parts.push('');
+  }
   if (summary) {
     parts.push(summary);
     parts.push('');
@@ -4370,7 +4504,8 @@ function formatNarrative() {
 }
 
 function formatJson() {
-  return JSON.stringify({
+  const { frameToNodes } = computeFrameMembership();
+  const out = {
     title: state.title,
     nodes: state.nodes.map(n => ({
       id: n.id,
@@ -4383,7 +4518,15 @@ function formatJson() {
       target: e.target,
       label: e.label || undefined,
     })),
-  }, null, 2);
+  };
+  if (state.frames.length > 0) {
+    out.frames = state.frames.map(f => ({
+      id: f.id,
+      title: f.title || 'Group',
+      childNodeIds: frameToNodes.get(f.id) || [],
+    }));
+  }
+  return JSON.stringify(out, null, 2);
 }
 
 function formatFolderTree() {
@@ -4460,25 +4603,37 @@ function formatFolderTree() {
 function formatMermaid() {
   if (state.nodes.length === 0) return 'flowchart TD\n  empty[No nodes yet]';
   const lines = ['flowchart TD'];
-  // Node declarations with shape based on type
-  for (const n of state.nodes) {
+  const { frameToNodes, nodeToFrame } = computeFrameMembership();
+
+  function nodeDecl(n, indent) {
     const safe = (n.label || 'node').replace(/"/g, "'");
-    let line;
     switch (n.type) {
       case 'start':
-      case 'end':
-        line = `  ${n.id}(["${safe}"])`; break;
-      case 'decision':
-        line = `  ${n.id}{"${safe}"}`; break;
-      case 'data':
-        line = `  ${n.id}[("${safe}")]`; break;
-      case 'note':
-        line = `  ${n.id}>"${safe}"]`; break;
-      default:
-        line = `  ${n.id}["${safe}"]`;
+      case 'end':     return `${indent}${n.id}(["${safe}"])`;
+      case 'decision':return `${indent}${n.id}{"${safe}"}`;
+      case 'data':    return `${indent}${n.id}[("${safe}")]`;
+      case 'note':    return `${indent}${n.id}>"${safe}"]`;
+      default:        return `${indent}${n.id}["${safe}"]`;
     }
-    lines.push(line);
   }
+
+  // Emit each frame as a subgraph containing its child nodes
+  for (const f of state.frames) {
+    const childIds = frameToNodes.get(f.id) || [];
+    if (childIds.length === 0) continue;
+    const safeTitle = (f.title || 'Group').replace(/"/g, "'");
+    lines.push(`  subgraph ${f.id}["${safeTitle}"]`);
+    for (const id of childIds) {
+      const n = state.nodes.find(x => x.id === id);
+      if (n) lines.push(nodeDecl(n, '    '));
+    }
+    lines.push('  end');
+  }
+  // Free nodes (not inside any frame)
+  for (const n of state.nodes) {
+    if (!nodeToFrame.has(n.id)) lines.push(nodeDecl(n, '  '));
+  }
+  // Edges
   for (const e of state.edges) {
     const label = e.label ? `|"${e.label.replace(/"/g, "'")}"|` : '';
     lines.push(`  ${e.source} -->${label} ${e.target}`);

@@ -2,6 +2,22 @@
 
 All notable changes to FlowSpec. Format roughly follows [Keep a Changelog](https://keepachangelog.com/). Versioning is loose pre-1.0 — minor bumps for feature batches, patch bumps for fixes.
 
+## [0.12.0] — 2026-05-11
+
+### Added
+- **Wrap selection in frame** — three ways to trigger:
+  - `▢ Frame` toolbar button now sizes the new frame around the current selection when 2+ nodes are selected (drops a default empty frame otherwise)
+  - Press `G` — same behavior
+  - Right-click any selected node (when 2+ are selected) → **▢ Wrap N nodes in frame**
+  - The new frame is sized to the bounding box of all selected nodes with 20px padding + 28px top space for the title
+- **Origin marker** — a faint 800×600 rectangle with a small dot is always drawn at world (0, 0). Marks where `⊙ Reset` snaps you back to; ignorable when working, useful when navigating back
+- **Frames in spec outputs**:
+  - **Markdown** — new `## Groups` section listing each frame and its child node labels
+  - **Narrative** — `Groups:` intro before the per-node prose, naming each frame's contents
+  - **JSON** — top-level `frames` array with `id`, `title`, and `childNodeIds` (computed from spatial overlap at output time)
+  - **Mermaid** — each frame becomes a native `subgraph "Title" … end` block. Nodes are defined inside their subgraph; free nodes outside; edges reference ids
+  - Folder tree intentionally skips frames — that format is for file/folder structures, not groups
+
 ## [0.11.0] — 2026-05-11
 
 ### Added
