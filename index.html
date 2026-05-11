@@ -191,6 +191,33 @@
   .context-menu hr {
     border: none; border-top: 1px solid var(--border); margin: 4px 0;
   }
+  .ctx-swatches {
+    display: flex; flex-wrap: wrap; gap: 4px;
+    padding: 6px 8px;
+  }
+  .ctx-swatch {
+    width: 22px; height: 22px;
+    border-radius: 4px;
+    border: 1.5px solid var(--border);
+    cursor: pointer;
+    background-clip: padding-box;
+    padding: 0;
+    position: relative;
+  }
+  .ctx-swatch:hover { border-color: var(--text); }
+  .ctx-swatch.reset {
+    background: repeating-linear-gradient(45deg, var(--surface), var(--surface) 4px, var(--surface-3) 4px, var(--surface-3) 8px);
+  }
+  .ctx-swatch.reset::after {
+    content: '×'; position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-muted); font-size: 14px;
+  }
+  .ctx-swatches-label {
+    padding: 4px 12px 0; font-size: 11px;
+    color: var(--text-faint);
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
   @media (pointer: coarse) {
     .context-menu .ctx-item { padding: 10px 12px; min-height: 40px; }
   }
@@ -804,12 +831,23 @@
   }
   .connect-handle:hover { r: 8; }
   .waypoint-handle {
-    fill: var(--surface);
-    stroke: var(--selection);
-    stroke-width: 2;
+    /* visible always; fill set inline (per-waypoint or edge color) */
+    stroke: var(--bg);
+    stroke-width: 1.5;
     cursor: move;
   }
-  .waypoint-handle:hover { r: 8; }
+  .waypoint-handle:hover { stroke-width: 2; }
+  .waypoint-handle.edge-selected {
+    stroke: var(--selection);
+    stroke-width: 2;
+  }
+  .waypoint-phantom {
+    fill: var(--text);
+    stroke: var(--bg);
+    stroke-width: 1.5;
+    opacity: 0.55;
+    pointer-events: none;
+  }
   @media (pointer: coarse) {
     .waypoint-handle { r: 9; }
     .connect-handle { r: 9; }
@@ -1332,7 +1370,7 @@
 // =============================================================
 // FlowSpec — visual flowchart builder with LLM-friendly text out
 // =============================================================
-const FLOWSPEC_VERSION = '0.15.4';
+const FLOWSPEC_VERSION = '0.16.0';
 
 const NODE_TYPES = {
   start:    { label: 'Start',    color: '#c0dd97', stroke: '#3b6d11', text: '#173404', shape: 'pill',    hint: 'Where the flow begins. Typically one per chart.' },
@@ -1387,6 +1425,8 @@ const state = {
   clipboard: null,         // { nodes: [...], edges: [...] } from last copy
   contextMenuWorldPoint: null, // world coords where the context menu was opened (for "Paste here")
   pendingMarquee: false,   // one-shot: next empty-canvas pointerdown starts a marquee (used for mobile)
+  pendingEdgeTap: null,    // { edgeId, worldX, worldY, clientX, clientY } — deferred "click selected edge" → add waypoint
+  hoveredEdgePhantom: null, // { edgeId, worldX, worldY } — phantom waypoint dot under cursor on a selected edge
 };
 
 function genId(prefix) {
@@ -1718,6 +1758,16 @@ function renderOverlay() {
       }
     }
   }
+  // Phantom waypoint dot — shows under the cursor when hovering a SELECTED
+  // edge, so the user sees that clicking will add a bend at that point
+  if (state.hoveredEdgePhantom && state.selectedEdgeId === state.hoveredEdgePhantom.edgeId) {
+    overlayLayer.appendChild(el('circle', {
+      class: 'waypoint-phantom',
+      cx: state.hoveredEdgePhantom.worldX,
+      cy: state.hoveredEdgePhantom.worldY,
+      r: 5,
+    }));
+  }
   if (state.connectDrag) {
     const src = state.nodes.find(n => n.id === state.connectDrag.sourceId);
     if (src) {
@@ -1752,10 +1802,35 @@ function attachWaypointHandle(circle, edgeId, idx) {
   });
   circle.addEventListener('contextmenu', (ev) => {
     ev.preventDefault(); ev.stopPropagation();
-    showContextMenu(ev.clientX, ev.clientY, [
-      { label: 'Delete waypoint', danger: true, action: () => deleteWaypoint(edgeId, idx) },
-    ]);
+    showContextMenu(ev.clientX, ev.clientY, waypointMenuItems(edgeId, idx));
   });
+}
+
+const WAYPOINT_PALETTE = [
+  null,        // reset / default
+  '#5fa5f4',   // blue
+  '#3eaa6c',   // green
+  '#f0c75c',   // yellow
+  '#e07b5b',   // red
+  '#a87fd6',   // purple
+  '#888780',   // muted gray
+];
+function waypointMenuItems(edgeId, idx) {
+  return [
+    { label: 'Color', swatches: WAYPOINT_PALETTE.map(c => ({ color: c, label: c || 'Default' })),
+      onPick: (color) => {
+        const e = state.edges.find(x => x.id === edgeId);
+        if (!e || !e.waypoints || !e.waypoints[idx]) return;
+        snapshot();
+        if (color) e.waypoints[idx].color = color;
+        else delete e.waypoints[idx].color;
+        save();
+        render();
+      },
+    },
+    'sep',
+    { label: 'Delete waypoint', danger: true, action: () => deleteWaypoint(edgeId, idx) },
+  ];
 }
 
 function deleteWaypoint(edgeId, idx) {
@@ -2327,15 +2402,41 @@ function renderEdges() {
         return;
       }
       armLongPress(ev, menuItemsForEdge(e.id));
-      if (state.mode === 'pan' || state.spaceDown || ev.button === 1 || isTouchPointer(ev) && state.mode !== 'connect') {
-        // Touch on edge falls through to selectEdge (tap to select). Only start pan for actual pan modes.
-        if (state.mode === 'pan' || state.spaceDown || ev.button === 1) {
-          startPan(ev);
-          return;
-        }
+      if (state.mode === 'pan' || state.spaceDown || ev.button === 1) {
+        startPan(ev);
+        return;
       }
       ev.stopPropagation();
-      selectEdge(e.id);
+      // Tap-on-already-selected-edge → add a waypoint at the click point.
+      // Defer the actual add to pointerup so a long-press (which also opens
+      // the context menu) doesn't both bend the edge AND show the menu.
+      if (state.selectedEdgeId === e.id) {
+        const wp = worldPoint(ev);
+        state.pendingEdgeTap = { edgeId: e.id, worldX: wp.x, worldY: wp.y, clientX: ev.clientX, clientY: ev.clientY };
+      } else {
+        selectEdge(e.id);
+      }
+    });
+    // Hover affordance — show a phantom dot at the cursor over the line
+    // (mouse only; this naturally no-ops on touch since there's no hover)
+    hit.addEventListener('mouseenter', (ev) => {
+      const wp = worldPoint(ev);
+      state.hoveredEdgePhantom = { edgeId: e.id, worldX: wp.x, worldY: wp.y };
+      renderOverlay();
+    });
+    hit.addEventListener('mousemove', (ev) => {
+      if (state.hoveredEdgePhantom && state.hoveredEdgePhantom.edgeId === e.id) {
+        const wp = worldPoint(ev);
+        state.hoveredEdgePhantom.worldX = wp.x;
+        state.hoveredEdgePhantom.worldY = wp.y;
+        renderOverlay();
+      }
+    });
+    hit.addEventListener('mouseleave', () => {
+      if (state.hoveredEdgePhantom && state.hoveredEdgePhantom.edgeId === e.id) {
+        state.hoveredEdgePhantom = null;
+        renderOverlay();
+      }
     });
     edgesLayer.appendChild(line);
     edgesLayer.appendChild(hit);
@@ -2353,12 +2454,16 @@ function renderEdges() {
       edgesLayer.appendChild(text);
     }
 
-    // Waypoint handles (only when the edge is selected)
-    if (isSel && e.waypoints && e.waypoints.length > 0) {
+    // Waypoint dots — always visible (slightly bigger + outlined when the
+    // edge is selected, so dragging them is easier)
+    if (e.waypoints && e.waypoints.length > 0) {
+      const defaultFill = e.color || 'currentColor';
       e.waypoints.forEach((wp, idx) => {
+        const fill = wp.color || defaultFill;
         const handle = el('circle', {
-          class: 'waypoint-handle',
-          cx: wp.x, cy: wp.y, r: 6,
+          class: 'waypoint-handle' + (isSel ? ' edge-selected' : ''),
+          cx: wp.x, cy: wp.y, r: isSel ? 6 : 4.5,
+          fill,
           'data-edge': e.id, 'data-idx': idx,
         });
         attachWaypointHandle(handle, e.id, idx);
@@ -2554,6 +2659,12 @@ document.addEventListener('pointermove', (ev) => {
     const dy = ev.clientY - longPressOrigin.y;
     if (Math.hypot(dx, dy) > LONG_PRESS_MOVE_PX) cancelLongPress();
   }
+  // Cancel deferred edge-tap (tap-on-selected-edge to add waypoint) if pointer moved
+  if (state.pendingEdgeTap) {
+    const dx = ev.clientX - state.pendingEdgeTap.clientX;
+    const dy = ev.clientY - state.pendingEdgeTap.clientY;
+    if (Math.hypot(dx, dy) > 5) state.pendingEdgeTap = null;
+  }
   // Pinch in progress — handle first, ignore other operations
   if (pinch && pointers.size >= 2) {
     updatePinch();
@@ -2739,6 +2850,12 @@ function onPointerEnd(ev) {
   pointers.delete(ev.pointerId);
   // Cancel any pending long-press
   cancelLongPress();
+  // Execute deferred edge tap (tap on already-selected edge → add waypoint)
+  if (state.pendingEdgeTap) {
+    const t = state.pendingEdgeTap;
+    state.pendingEdgeTap = null;
+    addWaypointToEdge(t.edgeId, t.worldX, t.worldY);
+  }
   // Frame drag release
   if (state.frameDrag) {
     const moved = state.frameDrag.moved;
@@ -2903,6 +3020,19 @@ document.addEventListener('keydown', (ev) => {
     const types = Object.keys(NODE_TYPES);
     const idx = parseInt(ev.key) - 1;
     if (idx < types.length) addNode(types[idx]);
+  } else if (ev.key === '0' && !ev.metaKey && !ev.ctrlKey && !ev.shiftKey && !ev.altKey) {
+    // 0 — add a waypoint at the selected edge's midpoint
+    if (state.selectedEdgeId) {
+      const e = state.edges.find(x => x.id === state.selectedEdgeId);
+      const src = e && state.nodes.find(n => n.id === e.source);
+      const tgt = e && state.nodes.find(n => n.id === e.target);
+      if (e && src && tgt) {
+        const m = edgePathAndMid(src, tgt, e);
+        addWaypointToEdge(e.id, m.mx, m.my);
+      }
+    } else {
+      setStatus('Select an edge first, then press 0 to drop a bend on it.');
+    }
   } else if (ev.key === 'a' && (ev.metaKey || ev.ctrlKey)) {
     state.selectedNodeIds = new Set(state.nodes.map(n => n.id));
     state.selectedFrameIds = new Set(state.frames.map(f => f.id));
@@ -3249,6 +3379,30 @@ function showContextMenu(clientX, clientY, items) {
       ctxMenu.appendChild(document.createElement('hr'));
       continue;
     }
+    if (it.swatches) {
+      // Inline color picker row
+      if (it.label) {
+        const lbl = document.createElement('div');
+        lbl.className = 'ctx-swatches-label';
+        lbl.textContent = it.label;
+        ctxMenu.appendChild(lbl);
+      }
+      const row = document.createElement('div');
+      row.className = 'ctx-swatches';
+      for (const sw of it.swatches) {
+        const dot = document.createElement('button');
+        dot.className = 'ctx-swatch' + (sw.color ? '' : ' reset');
+        if (sw.color) dot.style.background = sw.color;
+        dot.title = sw.label || (sw.color || 'Default');
+        dot.addEventListener('click', () => {
+          closeContextMenu();
+          try { it.onPick(sw.color || null); } catch(e) { console.warn(e); }
+        });
+        row.appendChild(dot);
+      }
+      ctxMenu.appendChild(row);
+      continue;
+    }
     const b = document.createElement('button');
     b.className = 'ctx-item' + (it.danger ? ' danger' : '');
     b.textContent = it.label;
@@ -3405,8 +3559,9 @@ function armLongPress(ev, items) {
     if (!longPressOrigin) return;
     showContextMenu(longPressOrigin.x, longPressOrigin.y, items);
     longPressOrigin = null;
-    // Also cancel any drag/select that may have been mid-start
+    // Long-press shows the menu — cancel any drag/tap that would also fire
     cancelOngoingOperations();
+    state.pendingEdgeTap = null;
   }, LONG_PRESS_MS);
 }
 
@@ -3984,6 +4139,7 @@ function renderPanel() {
           <p><strong>By dragging</strong> — select a node, then drag from one of the 4 small handles on its edges to another node.</p>
           <p><strong>By two clicks</strong> — toggle <span class="kbd">↳ Connect</span> (or <span class="kbd">C</span>), then click the source node, then the target.</p>
           <p><strong>Label an edge</strong> — click the line itself, then type a label in Properties (e.g. <em>yes</em>, <em>no</em>, <em>retry</em>).</p>
+          <p><strong>Bend an edge (waypoints)</strong> — select an edge, then click / tap anywhere on the line to drop a bend point at that spot. On desktop a faint phantom dot follows your cursor over the line so you can see where the bend will land. Press <span class="kbd">0</span> to drop one at the edge's midpoint. Drag the dot to move it; right-click for color (6 presets) or delete. Bend points are always visible — straight-line segments connect them, no curves.</p>
         </div>
       </details>
 
@@ -4076,6 +4232,7 @@ function renderPanel() {
         <div class="help-body">
           <table class="shortcuts-table">
             <tr><td>1–8</td><td>Add node by type</td></tr>
+            <tr><td>0</td><td>Add a bend / waypoint to the selected edge (at its midpoint)</td></tr>
             <tr><td>C</td><td>Toggle Connect mode</td></tr>
             <tr><td>F</td><td>Fit to content</td></tr>
             <tr><td>L</td><td>Auto-layout (Tidy)</td></tr>

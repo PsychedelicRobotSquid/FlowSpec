@@ -2,6 +2,21 @@
 
 All notable changes to FlowSpec. Format roughly follows [Keep a Changelog](https://keepachangelog.com/). Versioning is loose pre-1.0 — minor bumps for feature batches, patch bumps for fixes.
 
+## [0.16.0] — 2026-05-11
+
+### Added
+- **Edge waypoints are now first-class visual handles** — much easier to discover and place:
+  - **Click / tap a selected edge** anywhere on the line to drop a bend point at that spot. (First click selects the edge as before; the second click on the same edge bends it.)
+  - **Hover affordance**: on desktop, hovering a selected edge shows a faint phantom waypoint dot under the cursor so you can see where the bend will land before clicking
+  - **Hotkey `0`** drops a waypoint at the selected edge's current midpoint
+  - **Always-visible bend dots** — waypoints render whether the edge is selected or not, so they read like discrete objects on the line
+  - **Per-waypoint color** — right-click a bend dot for a 6-color palette + reset. Stored as `edge.waypoints[i].color` in the project file (backwards-compatible — old files load fine)
+  - Lines stay straight (`L` segments) between waypoints — no curves
+- Long-press on a waypoint (or the edge) on touch suppresses the deferred tap-to-add, so the context menu fires cleanly without accidentally bending the edge
+
+### Changed
+- Internal: `showContextMenu` now supports a `swatches` item type for inline color pickers in context menus
+
 ## [0.15.4] — 2026-05-11
 
 ### Changed

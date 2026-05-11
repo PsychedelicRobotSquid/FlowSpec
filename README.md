@@ -21,7 +21,7 @@ Most diagramming tools (Excalidraw, draw.io, Whimsical) export images or proprie
 ### Editor
 - **8 node types** — Start, Process, Decision, End, Folder, File/Data, Screen, Note — each with distinct shapes and colors
 - **Per-node sizing** (Small / Medium / Large), labels (multi-line), descriptions, and custom color overrides
-- **Edge styling** — solid / dashed / dotted, custom color, waypoints to bend connections
+- **Edge styling** — solid / dashed / dotted, custom color, waypoints to bend connections (click an already-selected edge to drop a bend point, or press `0` to drop one at the midpoint; per-bend color)
 - **Frames / groups** — labeled containers around a set of nodes; drag a frame to move it and everything inside. Press `G` (or click `▢ Frame`) with 2+ nodes selected to wrap them in a sized frame. Multi-selectable; included in spec output (Markdown / Narrative / JSON / Mermaid)
 - **Drag-to-connect** — drag from handles on a selected node to any other node
 - **Multi-select** — marquee drag or Shift-click, with align + distribute tools
@@ -97,6 +97,7 @@ The **Spec tab's** JSON format is intentionally minimal (just `id` / `type` / `l
 | Key | Action |
 |---|---|
 | `1`–`8` | Add a node of that type |
+| `0` | Add a bend / waypoint to the selected edge (at midpoint) |
 | `C` | Toggle Connect mode |
 | `F` | Fit to content |
 | `L` | Auto-layout (Tidy) |
