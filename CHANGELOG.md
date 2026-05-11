@@ -2,6 +2,13 @@
 
 All notable changes to FlowSpec. Format roughly follows [Keep a Changelog](https://keepachangelog.com/). Versioning is loose pre-1.0 — minor bumps for feature batches, patch bumps for fixes.
 
+## [0.15.3] — 2026-05-11
+
+### Fixed
+- **Copy / Cut / Paste now includes frames** — copying a multi-selection that contains frames captures each frame plus every node inside it (even if those nodes weren't explicitly selected). Paste re-IDs frames and applies the same offset to nodes + edges + frames so the group lands together
+- **Multi-select drag moves the whole group, including frames** — dragging any node or frame that's part of a multi-selection now translates every selected node, every selected frame, and every selected frame's children as one unit. Previously dragging a node only moved nodes, and dragging a frame in a multi-selection only moved that frame
+- Unified drag state internally (`state.drag` now carries `nodeIds` + `frameIds`); frame `state.frameDrag` is now resize-only
+
 ## [0.15.2] — 2026-05-11
 
 ### Changed

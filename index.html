@@ -1330,7 +1330,7 @@
 // =============================================================
 // FlowSpec — visual flowchart builder with LLM-friendly text out
 // =============================================================
-const FLOWSPEC_VERSION = '0.15.2';
+const FLOWSPEC_VERSION = '0.15.3';
 
 const NODE_TYPES = {
   start:    { label: 'Start',    color: '#c0dd97', stroke: '#3b6d11', text: '#173404', shape: 'pill',    hint: 'Where the flow begins. Typically one per chart.' },
@@ -2145,36 +2145,33 @@ function attachFrameHandlers(rect, frame) {
       startPan(ev);
       return;
     }
-    // Selection: shift-click toggles, plain click replaces
+    // Selection: shift-click toggles; plain click replaces (unless this frame
+    // is already part of a multi-selection — then preserve the group for drag)
+    const wasInSelection = state.selectedFrameIds.has(frame.id);
     if (ev.shiftKey) {
-      if (state.selectedFrameIds.has(frame.id)) state.selectedFrameIds.delete(frame.id);
+      if (wasInSelection) state.selectedFrameIds.delete(frame.id);
       else state.selectedFrameIds.add(frame.id);
-    } else {
-      if (!state.selectedFrameIds.has(frame.id)) {
-        state.selectedFrameIds.clear();
-        state.selectedFrameIds.add(frame.id);
-      }
+      render();
+      return;
+    }
+    const hasMultiSelection = wasInSelection &&
+      (state.selectedFrameIds.size + state.selectedNodeIds.size > 1);
+    if (!hasMultiSelection) {
+      state.selectedFrameIds.clear();
+      state.selectedFrameIds.add(frame.id);
       state.selectedNodeIds.clear();
       state.selectedEdgeId = null;
     }
-    // Children inside the frame's current bounds move with it
-    const childIds = state.nodes
-      .filter(n => n.x >= frame.x && n.x <= frame.x + frame.w
-                && n.y >= frame.y && n.y <= frame.y + frame.h)
-      .map(n => n.id);
-    const origPositions = new Map();
-    for (const id of childIds) {
-      const n = state.nodes.find(x => x.id === id);
-      if (n) origPositions.set(id, { x: n.x, y: n.y });
-    }
+    // Use the unified state.drag — moves every selected node + frame +
+    // every selected frame's children as a single group
     const wp = worldPoint(ev);
-    state.frameDrag = {
-      frameId: frame.id,
-      mode: 'move',
+    const set = buildMultiDragSet();
+    state.drag = {
+      nodeIds: Array.from(set.nodeIds),
+      frameIds: Array.from(set.frameIds),
       startX: wp.x, startY: wp.y,
-      frameOrigX: frame.x, frameOrigY: frame.y,
-      childIds,
-      origPositions,
+      origNodePositions: set.origNodePositions,
+      origFramePositions: set.origFramePositions,
       moved: false,
     };
     render();
@@ -2453,22 +2450,33 @@ function attachNodeHandlers(g, node) {
       state.selectedNodeIds.clear();
       state.selectedNodeIds.add(node.id);
       state.selectedEdgeId = null;
+      state.selectedFrameIds.clear();
     }
 
-    // Begin group drag — record original positions of every selected node
+    // Begin drag. If the selection includes other items (nodes or frames),
+    // drag them all as a group. Otherwise drag just this node.
     const wp = worldPoint(ev);
-    const origPositions = new Map();
-    for (const id of state.selectedNodeIds) {
-      const nn = state.nodes.find(x => x.id === id);
-      if (nn) origPositions.set(id, { x: nn.x, y: nn.y });
+    const groupDrag = state.selectedFrameIds.size > 0 || state.selectedNodeIds.size > 1;
+    if (groupDrag) {
+      const set = buildMultiDragSet();
+      state.drag = {
+        nodeIds: Array.from(set.nodeIds),
+        frameIds: Array.from(set.frameIds),
+        startX: wp.x, startY: wp.y,
+        origNodePositions: set.origNodePositions,
+        origFramePositions: set.origFramePositions,
+        moved: false,
+      };
+    } else {
+      state.drag = {
+        nodeIds: [node.id],
+        frameIds: [],
+        startX: wp.x, startY: wp.y,
+        origNodePositions: new Map([[node.id, { x: node.x, y: node.y }]]),
+        origFramePositions: new Map(),
+        moved: false,
+      };
     }
-    state.drag = {
-      ids: Array.from(state.selectedNodeIds),
-      startX: wp.x,
-      startY: wp.y,
-      origPositions,
-      moved: false,
-    };
     render();
   });
 }
@@ -2549,8 +2557,8 @@ document.addEventListener('pointermove', (ev) => {
     updatePinch();
     return;
   }
-  // Frame move / resize
-  if (state.frameDrag) {
+  // Frame resize (corner drag). Move is handled by state.drag above.
+  if (state.frameDrag && state.frameDrag.mode === 'resize') {
     const wp = worldPoint(ev);
     const f = state.frames.find(x => x.id === state.frameDrag.frameId);
     if (!f) { state.frameDrag = null; return; }
@@ -2560,39 +2568,20 @@ document.addEventListener('pointermove', (ev) => {
       state.frameDrag.moved = true;
       snapshot();
     }
-    if (state.frameDrag.mode === 'move') {
-      f.x = Math.round((state.frameDrag.frameOrigX + dx) / 10) * 10;
-      f.y = Math.round((state.frameDrag.frameOrigY + dy) / 10) * 10;
-      // Move children
-      const dxApplied = f.x - state.frameDrag.frameOrigX;
-      const dyApplied = f.y - state.frameDrag.frameOrigY;
-      for (const id of state.frameDrag.childIds) {
-        const n = state.nodes.find(x => x.id === id);
-        const orig = state.frameDrag.origPositions.get(id);
-        if (n && orig) {
-          n.x = Math.round((orig.x + dxApplied) / 10) * 10;
-          n.y = Math.round((orig.y + dyApplied) / 10) * 10;
-        }
-      }
-    } else if (state.frameDrag.mode === 'resize') {
-      const a = state.frameDrag.anchor;
-      let nx = state.frameDrag.origX, ny = state.frameDrag.origY;
-      let nw = state.frameDrag.origW, nh = state.frameDrag.origH;
-      if (a === 'nw') { nx = state.frameDrag.origX + dx; ny = state.frameDrag.origY + dy; nw = state.frameDrag.origW - dx; nh = state.frameDrag.origH - dy; }
-      else if (a === 'ne') { ny = state.frameDrag.origY + dy; nw = state.frameDrag.origW + dx; nh = state.frameDrag.origH - dy; }
-      else if (a === 'sw') { nx = state.frameDrag.origX + dx; nw = state.frameDrag.origW - dx; nh = state.frameDrag.origH + dy; }
-      else if (a === 'se') { nw = state.frameDrag.origW + dx; nh = state.frameDrag.origH + dy; }
-      // Clamp min size
-      if (nw < 80) { if (a === 'nw' || a === 'sw') nx -= (80 - nw); nw = 80; }
-      if (nh < 60) { if (a === 'nw' || a === 'ne') ny -= (60 - nh); nh = 60; }
-      f.x = Math.round(nx / 10) * 10;
-      f.y = Math.round(ny / 10) * 10;
-      f.w = Math.round(nw / 10) * 10;
-      f.h = Math.round(nh / 10) * 10;
-    }
+    const a = state.frameDrag.anchor;
+    let nx = state.frameDrag.origX, ny = state.frameDrag.origY;
+    let nw = state.frameDrag.origW, nh = state.frameDrag.origH;
+    if (a === 'nw') { nx = state.frameDrag.origX + dx; ny = state.frameDrag.origY + dy; nw = state.frameDrag.origW - dx; nh = state.frameDrag.origH - dy; }
+    else if (a === 'ne') { ny = state.frameDrag.origY + dy; nw = state.frameDrag.origW + dx; nh = state.frameDrag.origH - dy; }
+    else if (a === 'sw') { nx = state.frameDrag.origX + dx; nw = state.frameDrag.origW - dx; nh = state.frameDrag.origH + dy; }
+    else if (a === 'se') { nw = state.frameDrag.origW + dx; nh = state.frameDrag.origH + dy; }
+    if (nw < 80) { if (a === 'nw' || a === 'sw') nx -= (80 - nw); nw = 80; }
+    if (nh < 60) { if (a === 'nw' || a === 'ne') ny -= (60 - nh); nh = 60; }
+    f.x = Math.round(nx / 10) * 10;
+    f.y = Math.round(ny / 10) * 10;
+    f.w = Math.round(nw / 10) * 10;
+    f.h = Math.round(nh / 10) * 10;
     renderFrames();
-    renderEdges();
-    renderNodes();
     return;
   }
   // Waypoint drag in progress
@@ -2629,7 +2618,7 @@ document.addEventListener('pointermove', (ev) => {
     return;
   }
 
-  // Group drag in progress
+  // Group drag in progress (may include nodes, frames, and frame children)
   if (state.drag) {
     const wp = worldPoint(ev);
     const dx = wp.x - state.drag.startX;
@@ -2638,26 +2627,32 @@ document.addEventListener('pointermove', (ev) => {
       state.drag.moved = true;
       snapshot(); // snap at start of actual move, not on every click
     }
-    // First pass: provisional positions on the dragged nodes
-    for (const id of state.drag.ids) {
+    // Provisional node positions
+    for (const id of state.drag.nodeIds) {
       const n = state.nodes.find(x => x.id === id);
-      const orig = state.drag.origPositions.get(id);
+      const orig = state.drag.origNodePositions.get(id);
       if (!n || !orig) continue;
       n.x = Math.round((orig.x + dx) / 10) * 10;
       n.y = Math.round((orig.y + dy) / 10) * 10;
     }
-    // Compute alignment guides + snap (compare each dragged node's edges/center
-    // to non-dragged nodes; if within threshold, snap and emit a guide line)
+    // Provisional frame positions
+    for (const id of state.drag.frameIds) {
+      const f = state.frames.find(x => x.id === id);
+      const orig = state.drag.origFramePositions.get(id);
+      if (!f || !orig) continue;
+      f.x = Math.round((orig.x + dx) / 10) * 10;
+      f.y = Math.round((orig.y + dy) / 10) * 10;
+    }
+    // Alignment guides only when dragging exactly one node and no frames
     const SNAP_PX_SCREEN = 6;
     const snapPx = SNAP_PX_SCREEN / state.zoom;
-    const dragIds = new Set(state.drag.ids);
+    const dragIds = new Set(state.drag.nodeIds);
     const others = state.nodes.filter(n => !dragIds.has(n.id));
-    let snapX = null, snapY = null; // applied snap deltas
+    let snapX = null, snapY = null;
     const guides = [];
-    if (state.drag.ids.length === 1 && others.length > 0) {
-      const n = state.nodes.find(x => x.id === state.drag.ids[0]);
+    if (state.drag.nodeIds.length === 1 && state.drag.frameIds.length === 0 && others.length > 0) {
+      const n = state.nodes.find(x => x.id === state.drag.nodeIds[0]);
       const b = nodeBounds(n);
-      // Source values: left, center, right; top, middle, bottom
       const srcXs = [b.x, b.cx, b.x + b.w];
       const srcYs = [b.y, b.cy, b.y + b.h];
       let bestDX = Infinity, bestDY = Infinity;
@@ -2687,13 +2682,15 @@ document.addEventListener('pointermove', (ev) => {
       }
     }
     state.alignGuides = guides;
-    // Apply transforms
-    for (const id of state.drag.ids) {
+    // Apply node transforms directly (cheap)
+    for (const id of state.drag.nodeIds) {
       const n = state.nodes.find(x => x.id === id);
       if (!n) continue;
       const g = nodesLayer.querySelector(`g[data-id="${id}"]`);
       if (g) g.setAttribute('transform', `translate(${n.x},${n.y})`);
     }
+    // Frames moved — re-render the frames layer (cheap; ~1ms even at large counts)
+    if (state.drag.frameIds.length > 0) renderFrames();
     renderEdges();
     renderOverlay();
     return;
@@ -3038,33 +3035,93 @@ function addNode(type) {
   render();
 }
 
+// Build a unified drag set from the current selection. Used when dragging a
+// node or frame that's part of a multi-selection — everything moves together.
+// The children of every selected frame are folded into the nodes set so they
+// move with the frame (even if they weren't explicitly selected).
+function buildMultiDragSet() {
+  const nodeIds = new Set(state.selectedNodeIds);
+  const frameIds = new Set(state.selectedFrameIds);
+  for (const fid of frameIds) {
+    const f = state.frames.find(x => x.id === fid);
+    if (!f) continue;
+    for (const n of state.nodes) {
+      if (n.x >= f.x && n.x <= f.x + f.w && n.y >= f.y && n.y <= f.y + f.h) {
+        nodeIds.add(n.id);
+      }
+    }
+  }
+  const origNodePositions = new Map();
+  for (const id of nodeIds) {
+    const n = state.nodes.find(x => x.id === id);
+    if (n) origNodePositions.set(id, { x: n.x, y: n.y });
+  }
+  const origFramePositions = new Map();
+  for (const id of frameIds) {
+    const f = state.frames.find(x => x.id === id);
+    if (f) origFramePositions.set(id, { x: f.x, y: f.y });
+  }
+  return { nodeIds, frameIds, origNodePositions, origFramePositions };
+}
+
 // ---------- Copy / Cut / Paste ----------
 function copySelectedToClipboard() {
-  if (state.selectedNodeIds.size === 0) return false;
+  if (state.selectedNodeIds.size === 0 && state.selectedFrameIds.size === 0) return false;
+  // Start with explicitly-selected nodes; add the children of any selected
+  // frames so the frame's contents come along when you paste
   const ids = new Set(state.selectedNodeIds);
+  for (const fid of state.selectedFrameIds) {
+    const f = state.frames.find(x => x.id === fid);
+    if (!f) continue;
+    for (const n of state.nodes) {
+      if (n.x >= f.x && n.x <= f.x + f.w && n.y >= f.y && n.y <= f.y + f.h) {
+        ids.add(n.id);
+      }
+    }
+  }
   const nodes = state.nodes.filter(n => ids.has(n.id)).map(n => ({...n}));
   const edges = state.edges.filter(e => ids.has(e.source) && ids.has(e.target)).map(e => ({...e}));
-  state.clipboard = { nodes, edges };
-  setStatus(`Copied ${nodes.length} node${nodes.length===1?'':'s'}`);
+  const frames = state.frames.filter(f => state.selectedFrameIds.has(f.id)).map(f => ({...f}));
+  state.clipboard = { nodes, edges, frames };
+  const parts = [];
+  if (nodes.length) parts.push(`${nodes.length} node${nodes.length===1?'':'s'}`);
+  if (frames.length) parts.push(`${frames.length} frame${frames.length===1?'':'s'}`);
+  setStatus(`Copied ${parts.join(' + ')}`);
   return true;
 }
 
 function pasteFromClipboard(atWorldX, atWorldY) {
-  if (!state.clipboard || state.clipboard.nodes.length === 0) {
+  const cb = state.clipboard;
+  const hasNodes = cb && cb.nodes && cb.nodes.length > 0;
+  const hasFrames = cb && cb.frames && cb.frames.length > 0;
+  if (!hasNodes && !hasFrames) {
     setStatus('Clipboard is empty.');
     return;
   }
   snapshot();
-  const nodesIn = state.clipboard.nodes;
-  // Original centroid
-  const cx = nodesIn.reduce((s, n) => s + n.x, 0) / nodesIn.length;
-  const cy = nodesIn.reduce((s, n) => s + n.y, 0) / nodesIn.length;
+  // Compute bounding-box center of everything copied so the paste offset
+  // anchors the same way for any mix of nodes and frames
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  if (hasNodes) {
+    for (const n of cb.nodes) {
+      if (n.x < minX) minX = n.x; if (n.y < minY) minY = n.y;
+      if (n.x > maxX) maxX = n.x; if (n.y > maxY) maxY = n.y;
+    }
+  }
+  if (hasFrames) {
+    for (const f of cb.frames) {
+      if (f.x < minX) minX = f.x; if (f.y < minY) minY = f.y;
+      if (f.x + f.w > maxX) maxX = f.x + f.w;
+      if (f.y + f.h > maxY) maxY = f.y + f.h;
+    }
+  }
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
   let offsetX, offsetY;
   if (typeof atWorldX === 'number' && typeof atWorldY === 'number') {
     offsetX = atWorldX - cx;
     offsetY = atWorldY - cy;
   } else {
-    // Default: paste at current viewport center, fall back to slight offset
     const rect = svg.getBoundingClientRect();
     const center = screenToWorld({ x: rect.width / 2, y: rect.height / 2 });
     offsetX = center.x - cx;
@@ -3074,25 +3131,35 @@ function pasteFromClipboard(atWorldX, atWorldY) {
   offsetY = Math.round(offsetY / 10) * 10;
 
   const oldToNew = new Map();
-  const newNodes = [];
-  for (const n of nodesIn) {
+  const newNodes = (cb.nodes || []).map(n => {
     const newId = genId('node');
     oldToNew.set(n.id, newId);
-    newNodes.push({ ...n, id: newId, x: n.x + offsetX, y: n.y + offsetY });
-  }
-  const newEdges = state.clipboard.edges.map(e => ({
+    return { ...n, id: newId, x: n.x + offsetX, y: n.y + offsetY };
+  });
+  const newEdges = (cb.edges || []).map(e => ({
     ...e,
     id: genId('edge'),
     source: oldToNew.get(e.source),
     target: oldToNew.get(e.target),
   }));
+  const newFrames = (cb.frames || []).map(f => ({
+    ...f,
+    id: genId('frame'),
+    x: f.x + offsetX,
+    y: f.y + offsetY,
+  }));
   state.nodes.push(...newNodes);
   state.edges.push(...newEdges);
+  state.frames.push(...newFrames);
   state.selectedNodeIds = new Set(newNodes.map(n => n.id));
+  state.selectedFrameIds = new Set(newFrames.map(f => f.id));
   state.selectedEdgeId = null;
   save();
   render();
-  setStatus(`Pasted ${newNodes.length} node${newNodes.length===1?'':'s'}`);
+  const parts = [];
+  if (newNodes.length) parts.push(`${newNodes.length} node${newNodes.length===1?'':'s'}`);
+  if (newFrames.length) parts.push(`${newFrames.length} frame${newFrames.length===1?'':'s'}`);
+  setStatus(`Pasted ${parts.join(' + ')}`);
 }
 
 function cutSelectedToClipboard() {
