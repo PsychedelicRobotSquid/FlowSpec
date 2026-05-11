@@ -903,14 +903,16 @@
   }
   /* Visual separator between action tools and the Exit button */
   .floating-fs-exit { margin-left: 8px; }
+  /* Always-visible floating canvas toolbar (top-left of the canvas area) */
   .floating-fs-tools {
-    position: fixed; top: 8px; left: 8px;
-    z-index: 60;
-    display: none;
+    position: absolute; top: 8px; left: 8px;
+    z-index: 5;
+    display: flex;
     gap: 4px;
     align-items: center;
+    flex-wrap: wrap;
+    max-width: calc(100% - 16px);
   }
-  body.fullscreen .floating-fs-tools { display: flex; }
   .floating-fs-tool {
     background: rgba(0,0,0,0.55);
     color: #fff;
@@ -1074,7 +1076,6 @@
   <div class="actions">
     <button class="btn icon" id="theme-toggle-btn" title="Toggle dark / light theme">🌙</button>
     <button class="btn icon" id="tools-toggle-btn" title="Show / hide the toolbar">⌃</button>
-    <button class="btn icon" id="fullscreen-btn" title="Hide header & toolbar for more canvas (toggle)">⛶</button>
     <button class="btn desktop-only" id="output-toggle-btn" title="Open the Spec output tab">📄 Spec</button>
     <button class="btn desktop-only" id="projects-btn" title="Manage projects — switch, create, rename, delete">📁 Projects</button>
     <button class="btn desktop-only" id="open-btn" title="Open a .flowspec.json file from disk (Cmd/Ctrl+O)">📂 Open…</button>
@@ -1107,19 +1108,6 @@
     <input type="file" id="open-file-fallback" style="display:none" accept="application/json,.json">
   </div>
 </header>
-<div class="floating-fs-tools" id="floating-fs-tools">
-  <div class="dropdown" id="floating-add-dropdown">
-    <button class="floating-fs-tool" id="floating-add-btn" title="Add a node">+ Add ▾</button>
-    <div class="dropdown-menu" id="floating-add-menu" style="left:0; right:auto; top:100%; margin-top:6px;">
-      <!-- Filled by JS -->
-    </div>
-  </div>
-  <button class="floating-fs-tool" id="floating-frame-btn" title="Add / wrap frame (G)">▢</button>
-  <button class="floating-fs-tool" id="floating-tidy-btn" title="Tidy / Auto-layout (L)">▦</button>
-  <button class="floating-fs-tool" id="floating-fit-btn" title="Fit all to view (F)">⊡</button>
-  <button class="floating-fs-tool" id="floating-reset-btn" title="Reset view to origin">⊙</button>
-  <button class="floating-fs-tool floating-fs-exit" id="exit-fullscreen-btn" title="Exit fullscreen">⛶ Exit</button>
-</div>
 <div class="context-menu" id="context-menu"></div>
 <div class="tour-overlay" id="tour-overlay">
   <div class="tour-spotlight" id="tour-spotlight"></div>
@@ -1147,37 +1135,34 @@
     <button class="btn icon" id="undo-btn" title="Undo (Cmd/Ctrl+Z)" disabled>↶<span class="btn-label"> Undo</span></button>
     <button class="btn icon" id="redo-btn" title="Redo (Cmd/Ctrl+Shift+Z)" disabled>↷<span class="btn-label"> Redo</span></button>
   </div>
-  <div class="group desktop-only" id="add-nodes-group">
-    <!-- Filled by JS -->
-  </div>
-  <div class="group mobile-only">
-    <div class="dropdown" id="add-dropdown">
-      <button class="btn" id="add-menu-btn" title="Add a node">+ Add ▾</button>
-      <div class="dropdown-menu" id="add-menu" style="left:0; right:auto;">
-        <!-- Filled by JS -->
-      </div>
-    </div>
-  </div>
   <div class="group">
     <button class="btn" id="connect-btn" title="Click two nodes to connect them (C)">↳<span class="btn-label"> Connect</span></button>
     <button class="btn" id="pan-btn" title="Pan the canvas (hold Space to pan temporarily)">✋<span class="btn-label"> Pan</span></button>
     <button class="btn icon" id="zoom-out-btn" title="Zoom out (Z + scroll, or Ctrl + scroll)">−</button>
     <span class="zoom-display" id="zoom-display" title="Current zoom — click to reset to 100%">100%</span>
     <button class="btn icon" id="zoom-in-btn" title="Zoom in (Z + scroll, or Ctrl + scroll)">+</button>
-    <button class="btn icon" id="fit-content-btn" title="Fit all nodes to view (F)">⊡<span class="btn-label"> Fit</span></button>
-    <button class="btn icon" id="add-frame-btn" title="Add a group / frame around nodes">▢<span class="btn-label"> Frame</span></button>
-    <button class="btn icon" id="auto-layout-btn" title="Auto-layout: tidy nodes into layers (L)">▦<span class="btn-label"> Tidy</span></button>
     <button class="btn icon" id="issues-btn" title="Show flow issues" style="display:none;">⚠ 0</button>
-    <button class="btn icon" id="reset-view-btn" title="Reset zoom and pan">⊙<span class="btn-label"> Reset</span></button>
     <button class="btn danger icon" id="delete-btn" title="Delete selected (Del)" disabled>🗑<span class="btn-label"> Delete</span></button>
   </div>
   <div class="group" style="margin-left:auto; border-right:none;">
-    <span style="font-size:11px; color:var(--text-faint);" id="status-text">Click a node type to add it.</span>
+    <span style="font-size:11px; color:var(--text-faint);" id="status-text">Use + Add (top-left of canvas) to drop a node.</span>
   </div>
 </div>
 
 <main>
   <div id="canvas-wrap">
+    <div class="floating-fs-tools" id="floating-fs-tools">
+      <div class="dropdown" id="floating-add-dropdown">
+        <button class="floating-fs-tool" id="floating-add-btn" title="Add a node or frame">+ Add ▾</button>
+        <div class="dropdown-menu" id="floating-add-menu" style="left:0; right:auto; top:100%; margin-top:6px;">
+          <!-- Filled by JS -->
+        </div>
+      </div>
+      <button class="floating-fs-tool" id="floating-tidy-btn" title="Tidy / Auto-layout (L)">▦</button>
+      <button class="floating-fs-tool" id="floating-fit-btn" title="Fit all to view (F)">⊡</button>
+      <button class="floating-fs-tool" id="floating-reset-btn" title="Reset view to origin">⊙</button>
+      <button class="floating-fs-tool floating-fs-exit" id="fullscreen-toggle-btn" title="Enter fullscreen">⛶</button>
+    </div>
     <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5"
@@ -1339,7 +1324,7 @@
 // =============================================================
 // FlowSpec — visual flowchart builder with LLM-friendly text out
 // =============================================================
-const FLOWSPEC_VERSION = '0.14.1';
+const FLOWSPEC_VERSION = '0.15.0';
 
 const NODE_TYPES = {
   start:    { label: 'Start',    color: '#c0dd97', stroke: '#3b6d11', text: '#173404', shape: 'pill',    hint: 'Where the flow begins. Typically one per chart.' },
@@ -4044,11 +4029,12 @@ function renderPanel() {
       <details class="help-section">
         <summary>Theme, fullscreen, layout</summary>
         <div class="help-body">
+          <p><strong>Floating canvas toolbar</strong> — top-left of the canvas, always visible. Contains <span class="kbd">+ Add ▾</span> (all 8 node types + Frame), <span class="kbd">▦ Tidy</span>, <span class="kbd">⊡ Fit</span>, <span class="kbd">⊙ Reset</span>, and <span class="kbd">⛶</span> fullscreen toggle. Stays put in fullscreen too.</p>
           <p><strong>Theme</strong> — <span class="kbd">🌙 / ☀</span> in the header toggles dark / light. Persists.</p>
-          <p><strong>Tools collapse</strong> — <span class="kbd">⌃</span> hides just the toolbar.</p>
-          <p><strong>Fullscreen</strong> — <span class="kbd">⛶</span> hides the header + toolbar. A floating <strong>+ Add</strong> button stays in the top-left so you can keep adding nodes.</p>
+          <p><strong>Tools collapse</strong> — <span class="kbd">⌃</span> in the header hides the top toolbar (Undo/Redo/Connect/Pan/Zoom/Issues/Delete). The floating toolbar stays.</p>
+          <p><strong>Fullscreen</strong> — <span class="kbd">⛶</span> in the floating toolbar hides the header + top toolbar entirely. Tap again to bring them back.</p>
           <p><strong>Right panel</strong> — click <span class="kbd">›</span> to hide it; on desktop a small rail shows the tabs, on mobile the tab strip stays at the bottom. Tap any tab to expand.</p>
-          <p><strong>Origin marker</strong> — a faint 800×600 rectangle with a small dot marks world (0, 0). It's where <span class="kbd">⊙ Reset</span> snaps you back to. Always visible at low opacity so it never gets in the way.</p>
+          <p><strong>Origin marker</strong> — a faint 800×600 rectangle with a small dot marks world (0, 0). It's where <span class="kbd">⊙ Reset</span> snaps you back to. Always visible at low opacity.</p>
           <p><strong>Auto-save</strong> — every change is written to localStorage in the background. Use Save / Save As to also write to a real file on disk.</p>
         </div>
       </details>
@@ -4777,53 +4763,52 @@ function traverseAscii(node, visited, depth, prefix) {
 }
 
 // ---------- Toolbar setup ----------
+// Populates the single + Add ▾ menu (in the floating canvas toolbar).
+// Items: 8 node types with 1–8 hotkey hints, then a separator, then Frame (G).
 function buildToolbar() {
-  const g = document.getElementById('add-nodes-group');
-  const menu = document.getElementById('add-menu');
   const floatingMenu = document.getElementById('floating-add-menu');
-  g.innerHTML = '';
-  if (menu) menu.innerHTML = '';
-  if (floatingMenu) floatingMenu.innerHTML = '';
+  if (!floatingMenu) return;
+  floatingMenu.innerHTML = '';
+
   const typeKeys = Object.keys(NODE_TYPES);
   typeKeys.forEach((k, i) => {
     const v = NODE_TYPES[k];
     const hotkey = i < 9 ? (i + 1) : null;
     const hotkeyHtml = hotkey ? `<span style="float:right; color:var(--text-faint); font-size:11px; margin-left:12px;">${hotkey}</span>` : '';
-    const b = document.createElement('button');
-    b.className = 'btn add-node-btn';
-    b.innerHTML = `<span class="dot" style="background:${v.color}; border:1px solid ${v.stroke};"></span>+ ${v.label}`;
-    b.title = `${v.label} — ${v.hint || 'Add a node'}${hotkey ? ` (press ${hotkey})` : ''}`;
-    b.addEventListener('click', () => addNode(k));
-    g.appendChild(b);
-
-    const makeMenuItem = (closeDropdownId) => {
-      const mi = document.createElement('button');
-      mi.className = 'dropdown-item';
-      mi.innerHTML = `<span class="dot" style="display:inline-block; width:10px; height:10px; border-radius:2px; vertical-align:middle; margin-right:8px; background:${v.color}; border:1px solid ${v.stroke};"></span>${v.label}${hotkeyHtml}`;
-      mi.title = v.hint || '';
-      mi.addEventListener('click', () => {
-        document.getElementById(closeDropdownId).classList.remove('open');
-        addNode(k);
-      });
-      return mi;
-    };
-    if (menu) menu.appendChild(makeMenuItem('add-dropdown'));
-    if (floatingMenu) floatingMenu.appendChild(makeMenuItem('floating-add-dropdown'));
+    const mi = document.createElement('button');
+    mi.className = 'dropdown-item';
+    mi.innerHTML = `<span class="dot" style="display:inline-block; width:10px; height:10px; border-radius:2px; vertical-align:middle; margin-right:8px; background:${v.color}; border:1px solid ${v.stroke};"></span>${v.label}${hotkeyHtml}`;
+    mi.title = v.hint || '';
+    mi.addEventListener('click', () => {
+      document.getElementById('floating-add-dropdown').classList.remove('open');
+      addNode(k);
+    });
+    floatingMenu.appendChild(mi);
   });
+
+  // Separator + Frame
+  const sep = document.createElement('hr');
+  sep.style.cssText = 'border:none; border-top:1px solid var(--border); margin:4px 0;';
+  floatingMenu.appendChild(sep);
+  const frameItem = document.createElement('button');
+  frameItem.className = 'dropdown-item';
+  frameItem.innerHTML = `<span class="dot" style="display:inline-block; width:10px; height:10px; border-radius:2px; vertical-align:middle; margin-right:8px; background:transparent; border:1.5px dashed var(--text-faint);"></span>Frame<span style="float:right; color:var(--text-faint); font-size:11px; margin-left:12px;">G</span>`;
+  frameItem.title = 'Add a frame, or wrap the current selection (G)';
+  frameItem.addEventListener('click', () => {
+    document.getElementById('floating-add-dropdown').classList.remove('open');
+    addFrame();
+  });
+  floatingMenu.appendChild(frameItem);
 }
 
 document.getElementById('connect-btn').addEventListener('click', toggleConnect);
 document.getElementById('pan-btn').addEventListener('click', togglePan);
-document.getElementById('reset-view-btn').addEventListener('click', resetView);
 document.getElementById('delete-btn').addEventListener('click', deleteSelected);
 document.getElementById('undo-btn').addEventListener('click', undo);
 document.getElementById('redo-btn').addEventListener('click', redo);
 document.getElementById('zoom-in-btn').addEventListener('click', () => zoomBy(1.2));
 document.getElementById('zoom-out-btn').addEventListener('click', () => zoomBy(1/1.2));
 document.getElementById('zoom-display').addEventListener('click', () => setZoom(1));
-document.getElementById('fit-content-btn').addEventListener('click', () => fitToContent());
-document.getElementById('auto-layout-btn').addEventListener('click', () => autoLayout());
-document.getElementById('add-frame-btn').addEventListener('click', () => addFrame());
 
 // ---------- Generate with AI ----------
 const LLM_SCHEMA_PROMPT = `You're generating a .flowspec.json file for FlowSpec — a visual flowchart app. Output only the JSON, no commentary.
@@ -6219,10 +6204,8 @@ function wireDropdown(dropdownId, btnId) {
 }
 wireDropdown('export-dropdown', 'export-menu-btn');
 wireDropdown('more-dropdown', 'more-menu-btn');
-wireDropdown('add-dropdown', 'add-menu-btn');
 wireDropdown('floating-add-dropdown', 'floating-add-btn');
-// Floating fullscreen mini-toolbar — alias the existing handlers
-document.getElementById('floating-frame-btn').addEventListener('click', () => addFrame());
+// Floating canvas toolbar — always visible
 document.getElementById('floating-tidy-btn').addEventListener('click', () => autoLayout());
 document.getElementById('floating-fit-btn').addEventListener('click', () => fitToContent());
 document.getElementById('floating-reset-btn').addEventListener('click', () => resetView());
@@ -6272,13 +6255,18 @@ document.querySelectorAll('#more-menu .dropdown-item').forEach(item => {
   });
 });
 
-// Fullscreen toggle (hide header + toolbar for maximum canvas)
+// Fullscreen toggle (hide header + toolbar for maximum canvas).
+// Single button in the floating canvas toolbar; title flips based on state.
 function toggleFullscreen(force) {
   const want = typeof force === 'boolean' ? force : !document.body.classList.contains('fullscreen');
   document.body.classList.toggle('fullscreen', want);
+  const btn = document.getElementById('fullscreen-toggle-btn');
+  if (btn) {
+    btn.title = want ? 'Exit fullscreen' : 'Enter fullscreen';
+    btn.textContent = want ? '⛶ Exit' : '⛶';
+  }
 }
-document.getElementById('fullscreen-btn').addEventListener('click', () => toggleFullscreen());
-document.getElementById('exit-fullscreen-btn').addEventListener('click', () => toggleFullscreen(false));
+document.getElementById('fullscreen-toggle-btn').addEventListener('click', () => toggleFullscreen());
 
 // Tools toggle (hide just the toolbar, keep header)
 function applyToolsCollapsed(collapsed) {
@@ -6400,14 +6388,19 @@ const TOUR_STEPS = [
     body: 'Build flowcharts visually and turn them into clean structured text. This quick tour walks through the basics — skip anytime.',
   },
   {
-    selector: '#add-nodes-group, #add-menu-btn, .toolbar',
-    title: 'Add nodes',
-    body: 'Click any node-type button — Start, Process, Decision, etc. — to drop one on the canvas. Press 1–8 for quick-add. On mobile they\'re tucked behind the + Add menu.',
+    selector: '#floating-add-dropdown, #floating-fs-tools',
+    title: 'Add nodes &amp; frames',
+    body: 'The floating + Add menu (top-left of the canvas) holds all 8 node types plus Frame. Press 1–8 to drop a node, or G to add / wrap a frame.',
   },
   {
     selector: '#canvas-wrap',
     title: 'Move &amp; connect',
-    body: 'Drag a node to move it. Click a node to select; small handles appear on its edges — drag any handle to another node to create a connection. Pinch / scroll-zoom / pan are all supported.',
+    body: 'Drag a node to move it. Tap / click a node to select; small handles appear on its edges — drag any handle to another node to create a connection. Pinch / scroll-zoom / pan are all supported.',
+  },
+  {
+    selector: '#floating-tidy-btn, #floating-fit-btn, #floating-reset-btn, #floating-fs-tools',
+    title: 'Tidy, Fit, Reset, Fullscreen',
+    body: '▦ Tidy resolves overlaps without rearranging your layout. ⊡ Fit frames everything in view. ⊙ Reset goes back to 100% at origin. ⛶ Fullscreen hides the header + toolbar for max canvas.',
   },
   {
     selector: '.panel-tabs, .panel-collapsed-rail',
@@ -6420,14 +6413,9 @@ const TOUR_STEPS = [
     body: 'Press Cmd/Ctrl+S (or 💾 Save) to write your project as a .flowspec.json file. On Chrome/Edge it saves silently in place once linked; elsewhere it downloads.',
   },
   {
-    selector: '#auto-layout-btn, #add-frame-btn',
-    title: 'Tidy &amp; group',
-    body: '▦ Tidy auto-arranges everything top-to-bottom in layers. ▢ Frame drops a labeled container around a set of nodes — they move with the frame.',
-  },
-  {
     selector: '#theme-toggle-btn',
     title: 'You\'re all set',
-    body: 'Toggle dark/light, hide the toolbar (⌃), or go fullscreen (⛶) for max canvas. Pop open the Help tab any time for the full keyboard-shortcut list.',
+    body: 'Toggle dark/light, hide the toolbar (⌃), or pop open the Help tab any time for the full keyboard-shortcut list.',
   },
 ];
 let tourIdx = 0;

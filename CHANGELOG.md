@@ -2,6 +2,15 @@
 
 All notable changes to FlowSpec. Format roughly follows [Keep a Changelog](https://keepachangelog.com/). Versioning is loose pre-1.0 — minor bumps for feature batches, patch bumps for fixes.
 
+## [0.15.0] — 2026-05-11
+
+### Changed
+- **Canvas toolbar consolidation** — the floating tools (previously only visible in fullscreen) are now **always visible** at the top-left of the canvas, on every screen and every mode. Contains `+ Add ▾` / `▦ Tidy` / `⊡ Fit` / `⊙ Reset` / `⛶` (fullscreen toggle)
+- **Frame moved into the + Add menu** alongside the 8 node types (with the same `G` hotkey shown as a hint). No more separate Frame button
+- **Top toolbar slimmed** — removed the per-node-type buttons (now in + Add), the mobile `+ Add` dropdown (redundant with floating), and the standalone `▦ Tidy`, `⊡ Fit`, `⊙ Reset`, `▢ Frame` buttons. What's left: Undo / Redo / Connect / Pan / Zoom / Issues / Delete
+- **Single fullscreen toggle** — the header `⛶` button is gone. The floating `⛶` flips in / out of fullscreen and its title updates to match the current state. No more "Exit" button stranded in a corner
+- All these consolidations stay reachable on every screen, including fullscreen and mobile, without overlapping the right-panel tabs
+
 ## [0.14.1] — 2026-05-11
 
 ### Changed
