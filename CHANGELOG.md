@@ -2,6 +2,19 @@
 
 All notable changes to FlowSpec. Format roughly follows [Keep a Changelog](https://keepachangelog.com/). Versioning is loose pre-1.0 — minor bumps for feature batches, patch bumps for fixes.
 
+## [0.13.0] — 2026-05-11
+
+### Added
+- **Roadmap** — new [ROADMAP.md](ROADMAP.md) listing future ideas (user-created templates, PWA install, share-via-URL, BYO-key LLM features, etc.)
+
+### Changed
+- **Origin marker is now visibly centered** on screen at default view. `Reset` and the initial load both pan the canvas so world (0, 0) sits at the viewport center, where the faint origin rectangle is now visible in the middle instead of clipped at the top-left
+- **All built-in templates re-centered around (0, 0)** via a one-time `centerSeed()` pass at startup. Combined with the centered Reset behavior, templates now load nicely centered in the viewport
+- **Open file / switch project / new project** all call `fitToContent()` after loading, so the project's content is automatically centered on the viewport regardless of where the nodes were saved
+
+### Fixed
+- **Template list overflow — permanent fix**. The `+ From template` dropdown was getting clipped by the modal's `overflow: hidden` and didn't scroll properly when many templates were added. Replaced the dropdown entirely with an in-modal **template gallery view**: clicking `+ From template…` swaps the modal body to a scrollable card list with a `← Back to projects` link. Add as many templates as we want — the body just scrolls
+
 ## [0.12.0] — 2026-05-11
 
 ### Added

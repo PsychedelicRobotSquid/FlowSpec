@@ -173,6 +173,10 @@ The app is one HTML file, so anywhere that hosts static files works.
 
 ---
 
+## What's coming
+
+See [ROADMAP.md](ROADMAP.md) for ideas on the runway — user-created templates, PWA install, share-via-URL, BYO-key LLM features, and more.
+
 ## License
 
 MIT — do whatever you want with it.
