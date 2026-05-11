@@ -2,6 +2,12 @@
 
 All notable changes to FlowSpec. Format roughly follows [Keep a Changelog](https://keepachangelog.com/). Versioning is loose pre-1.0 — minor bumps for feature batches, patch bumps for fixes.
 
+## [0.15.1] — 2026-05-11
+
+### Changed
+- **Per-node-type buttons restored** in the top toolbar (desktop) alongside the dedicated Frame button — quick one-click adds without going through the dropdown. The floating `+ Add ▾` keeps the same content (8 types + Frame) and stays usable on every screen
+- **Tools toggle moved from the header into the toolbar itself** (left edge). When you collapse the toolbar, every other group hides but the toggle stays visible so you can expand back. The `⌃` button in the header (between 🌙 and the right-side actions) is gone
+
 ## [0.15.0] — 2026-05-11
 
 ### Changed

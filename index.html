@@ -895,8 +895,12 @@
   /* Fullscreen mode — hides header + toolbar for max canvas */
   body.fullscreen header,
   body.fullscreen .toolbar { display: none; }
-  /* Tools collapsed — hides just the toolbar (header still visible) */
-  body.tools-collapsed .toolbar { display: none; }
+  /* Tools collapsed — hide every toolbar group except the toggle itself,
+     so users can still see the toggle and expand the toolbar back */
+  body.tools-collapsed .toolbar > .group:not(.toolbar-toggle-group) { display: none; }
+  body.tools-collapsed .toolbar { padding-top: 4px; padding-bottom: 4px; }
+  .toolbar-toggle-group { border-right: 1px solid var(--border); }
+  body.tools-collapsed .toolbar-toggle-group { border-right: none; }
   /* Hide button text labels at narrow widths — buttons become icon-only */
   @media (max-width: 800px) {
     .btn-label { display: none; }
@@ -1075,7 +1079,6 @@
   </div>
   <div class="actions">
     <button class="btn icon" id="theme-toggle-btn" title="Toggle dark / light theme">🌙</button>
-    <button class="btn icon" id="tools-toggle-btn" title="Show / hide the toolbar">⌃</button>
     <button class="btn desktop-only" id="output-toggle-btn" title="Open the Spec output tab">📄 Spec</button>
     <button class="btn desktop-only" id="projects-btn" title="Manage projects — switch, create, rename, delete">📁 Projects</button>
     <button class="btn desktop-only" id="open-btn" title="Open a .flowspec.json file from disk (Cmd/Ctrl+O)">📂 Open…</button>
@@ -1131,9 +1134,18 @@
   <div class="issues-body" id="issues-body"></div>
 </div>
 <div class="toolbar">
+  <div class="group toolbar-toggle-group">
+    <button class="btn icon" id="tools-toggle-btn" title="Show / hide the toolbar">⌃</button>
+  </div>
   <div class="group">
     <button class="btn icon" id="undo-btn" title="Undo (Cmd/Ctrl+Z)" disabled>↶<span class="btn-label"> Undo</span></button>
     <button class="btn icon" id="redo-btn" title="Redo (Cmd/Ctrl+Shift+Z)" disabled>↷<span class="btn-label"> Redo</span></button>
+  </div>
+  <div class="group desktop-only" id="add-nodes-group">
+    <!-- Filled by JS -->
+  </div>
+  <div class="group desktop-only">
+    <button class="btn icon" id="add-frame-btn" title="Add a frame / wrap selection (G)">▢<span class="btn-label"> Frame</span></button>
   </div>
   <div class="group">
     <button class="btn" id="connect-btn" title="Click two nodes to connect them (C)">↳<span class="btn-label"> Connect</span></button>
@@ -1324,7 +1336,7 @@
 // =============================================================
 // FlowSpec — visual flowchart builder with LLM-friendly text out
 // =============================================================
-const FLOWSPEC_VERSION = '0.15.0';
+const FLOWSPEC_VERSION = '0.15.1';
 
 const NODE_TYPES = {
   start:    { label: 'Start',    color: '#c0dd97', stroke: '#3b6d11', text: '#173404', shape: 'pill',    hint: 'Where the flow begins. Typically one per chart.' },
@@ -4763,42 +4775,62 @@ function traverseAscii(node, visited, depth, prefix) {
 }
 
 // ---------- Toolbar setup ----------
-// Populates the single + Add ▾ menu (in the floating canvas toolbar).
-// Items: 8 node types with 1–8 hotkey hints, then a separator, then Frame (G).
+// Populates BOTH:
+//   • #add-nodes-group — the per-node-type buttons in the top toolbar (desktop)
+//   • #floating-add-menu — the always-visible + Add ▾ dropdown on the canvas
+// The dropdown also includes a Frame entry as its last item (Frame stays a
+// dedicated button in the top toolbar separately).
 function buildToolbar() {
+  const g = document.getElementById('add-nodes-group');
   const floatingMenu = document.getElementById('floating-add-menu');
-  if (!floatingMenu) return;
-  floatingMenu.innerHTML = '';
+  if (g) g.innerHTML = '';
+  if (floatingMenu) floatingMenu.innerHTML = '';
 
   const typeKeys = Object.keys(NODE_TYPES);
   typeKeys.forEach((k, i) => {
     const v = NODE_TYPES[k];
     const hotkey = i < 9 ? (i + 1) : null;
     const hotkeyHtml = hotkey ? `<span style="float:right; color:var(--text-faint); font-size:11px; margin-left:12px;">${hotkey}</span>` : '';
-    const mi = document.createElement('button');
-    mi.className = 'dropdown-item';
-    mi.innerHTML = `<span class="dot" style="display:inline-block; width:10px; height:10px; border-radius:2px; vertical-align:middle; margin-right:8px; background:${v.color}; border:1px solid ${v.stroke};"></span>${v.label}${hotkeyHtml}`;
-    mi.title = v.hint || '';
-    mi.addEventListener('click', () => {
-      document.getElementById('floating-add-dropdown').classList.remove('open');
-      addNode(k);
-    });
-    floatingMenu.appendChild(mi);
+
+    // Per-type button in the top toolbar
+    if (g) {
+      const b = document.createElement('button');
+      b.className = 'btn add-node-btn';
+      b.innerHTML = `<span class="dot" style="background:${v.color}; border:1px solid ${v.stroke};"></span>+ ${v.label}`;
+      b.title = `${v.label} — ${v.hint || 'Add a node'}${hotkey ? ` (press ${hotkey})` : ''}`;
+      b.addEventListener('click', () => addNode(k));
+      g.appendChild(b);
+    }
+
+    // Floating + Add ▾ menu item
+    if (floatingMenu) {
+      const mi = document.createElement('button');
+      mi.className = 'dropdown-item';
+      mi.innerHTML = `<span class="dot" style="display:inline-block; width:10px; height:10px; border-radius:2px; vertical-align:middle; margin-right:8px; background:${v.color}; border:1px solid ${v.stroke};"></span>${v.label}${hotkeyHtml}`;
+      mi.title = v.hint || '';
+      mi.addEventListener('click', () => {
+        document.getElementById('floating-add-dropdown').classList.remove('open');
+        addNode(k);
+      });
+      floatingMenu.appendChild(mi);
+    }
   });
 
-  // Separator + Frame
-  const sep = document.createElement('hr');
-  sep.style.cssText = 'border:none; border-top:1px solid var(--border); margin:4px 0;';
-  floatingMenu.appendChild(sep);
-  const frameItem = document.createElement('button');
-  frameItem.className = 'dropdown-item';
-  frameItem.innerHTML = `<span class="dot" style="display:inline-block; width:10px; height:10px; border-radius:2px; vertical-align:middle; margin-right:8px; background:transparent; border:1.5px dashed var(--text-faint);"></span>Frame<span style="float:right; color:var(--text-faint); font-size:11px; margin-left:12px;">G</span>`;
-  frameItem.title = 'Add a frame, or wrap the current selection (G)';
-  frameItem.addEventListener('click', () => {
-    document.getElementById('floating-add-dropdown').classList.remove('open');
-    addFrame();
-  });
-  floatingMenu.appendChild(frameItem);
+  // Floating menu: separator + Frame
+  if (floatingMenu) {
+    const sep = document.createElement('hr');
+    sep.style.cssText = 'border:none; border-top:1px solid var(--border); margin:4px 0;';
+    floatingMenu.appendChild(sep);
+    const frameItem = document.createElement('button');
+    frameItem.className = 'dropdown-item';
+    frameItem.innerHTML = `<span class="dot" style="display:inline-block; width:10px; height:10px; border-radius:2px; vertical-align:middle; margin-right:8px; background:transparent; border:1.5px dashed var(--text-faint);"></span>Frame<span style="float:right; color:var(--text-faint); font-size:11px; margin-left:12px;">G</span>`;
+    frameItem.title = 'Add a frame, or wrap the current selection (G)';
+    frameItem.addEventListener('click', () => {
+      document.getElementById('floating-add-dropdown').classList.remove('open');
+      addFrame();
+    });
+    floatingMenu.appendChild(frameItem);
+  }
 }
 
 document.getElementById('connect-btn').addEventListener('click', toggleConnect);
@@ -4809,6 +4841,7 @@ document.getElementById('redo-btn').addEventListener('click', redo);
 document.getElementById('zoom-in-btn').addEventListener('click', () => zoomBy(1.2));
 document.getElementById('zoom-out-btn').addEventListener('click', () => zoomBy(1/1.2));
 document.getElementById('zoom-display').addEventListener('click', () => setZoom(1));
+document.getElementById('add-frame-btn').addEventListener('click', () => addFrame());
 
 // ---------- Generate with AI ----------
 const LLM_SCHEMA_PROMPT = `You're generating a .flowspec.json file for FlowSpec — a visual flowchart app. Output only the JSON, no commentary.
