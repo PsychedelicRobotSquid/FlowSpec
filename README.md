@@ -6,7 +6,7 @@ A single-file flowchart builder that turns visual diagrams into clean structured
 
 > No installation. No build step. No dependencies. One HTML file.
 
-Live demo: [https://psychedelicrobotsquid.github.io/flowspec/](https://psychedelicrobotsquid.github.io/flowspec/)
+Live demo: [https://psychedelicrobotsquid.github.io/FlowSpec/](https://psychedelicrobotsquid.github.io/FlowSpec/)
 
 ---
 
@@ -137,8 +137,8 @@ The **Spec tab's** JSON format is intentionally minimal (just `id` / `type` / `l
 Just open `index.html` in your browser — that's the whole app.
 
 ```bash
-git clone https://github.com/PsychedelicRobotSquid/flowspec.git
-cd flowspec
+git clone https://github.com/PsychedelicRobotSquid/FlowSpec.git
+cd FlowSpec
 # Then open index.html in your browser, or:
 python3 -m http.server 8000   # serve at http://localhost:8000
 ```
