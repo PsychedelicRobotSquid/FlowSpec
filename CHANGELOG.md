@@ -2,6 +2,11 @@
 
 All notable changes to FlowSpec. Format roughly follows [Keep a Changelog](https://keepachangelog.com/). Versioning is loose pre-1.0 — minor bumps for feature batches, patch bumps for fixes.
 
+## [0.10.1] — 2026-05-11
+
+### Fixed
+- Auto-layout (`▦ Tidy` / `L`) no longer freezes the tab on flows with cycles or back-edges. The longest-path BFS now caps per-node depth updates at N (total node count), guaranteeing termination at O(N²) max while preserving the layered layout
+
 ## [0.10.0] — 2026-05-11
 
 ### Added

@@ -1281,7 +1281,7 @@
 // =============================================================
 // FlowSpec — visual flowchart builder with LLM-friendly text out
 // =============================================================
-const FLOWSPEC_VERSION = '0.10.0';
+const FLOWSPEC_VERSION = '0.10.1';
 
 const NODE_TYPES = {
   start:    { label: 'Start',    color: '#c0dd97', stroke: '#3b6d11', text: '#173404', shape: 'pill',    hint: 'Where the flow begins. Typically one per chart.' },
@@ -3451,16 +3451,27 @@ function autoLayout() {
     return (rank[a.type] ?? 10) - (rank[b.type] ?? 10);
   });
 
-  // BFS layer assignment (longest path from any root)
+  // BFS layer assignment (longest path from any root).
+  // Each node's layer can be updated at most N times — caps the work at O(N²)
+  // and guarantees termination on graphs with cycles or back-edges.
   const layer = new Map();
+  const updateCount = new Map();
   const queue = [];
-  for (const r of roots) { layer.set(r.id, 0); queue.push(r.id); }
+  for (const r of roots) {
+    layer.set(r.id, 0);
+    updateCount.set(r.id, 1);
+    queue.push(r.id);
+  }
+  const maxUpdatesPerNode = state.nodes.length;
   while (queue.length) {
     const id = queue.shift();
     const d = layer.get(id);
     for (const t of outgoing.get(id) || []) {
       const cur = layer.get(t);
       if (cur === undefined || cur < d + 1) {
+        const u = (updateCount.get(t) || 0) + 1;
+        if (u > maxUpdatesPerNode) continue; // cycle guard — stop re-propagating
+        updateCount.set(t, u);
         layer.set(t, d + 1);
         queue.push(t);
       }
