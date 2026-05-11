@@ -622,6 +622,63 @@
     padding: 24px 16px; text-align: center;
     color: var(--text-faint); font-size: 13px;
   }
+  /* Onboarding tour */
+  .tour-overlay {
+    position: fixed; inset: 0;
+    z-index: 200;
+    display: none;
+    pointer-events: none;
+  }
+  .tour-overlay.open { display: block; }
+  .tour-spotlight {
+    position: absolute;
+    border-radius: 8px;
+    box-shadow: 0 0 0 9999px rgba(0,0,0,0.62), 0 0 0 3px var(--accent);
+    pointer-events: none;
+    transition: top 0.22s ease, left 0.22s ease, width 0.22s ease, height 0.22s ease;
+  }
+  .tour-spotlight.global {
+    left: 0; top: 0;
+    width: 100vw; height: 100vh;
+    border-radius: 0;
+    box-shadow: inset 0 0 0 100vmax rgba(0,0,0,0.62);
+  }
+  .tour-popover {
+    position: absolute;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    padding: 16px 18px;
+    width: 320px;
+    max-width: calc(100vw - 24px);
+    pointer-events: auto;
+    z-index: 201;
+    transition: left 0.22s ease, top 0.22s ease;
+  }
+  .tour-popover .tour-step-num {
+    font-size: 11px; color: var(--text-faint);
+    text-transform: uppercase; letter-spacing: 0.05em;
+    margin-bottom: 4px;
+  }
+  .tour-popover .tour-title {
+    margin: 0 0 8px 0; font-size: 15px; font-weight: 600;
+    color: var(--text);
+  }
+  .tour-popover .tour-body {
+    margin: 0 0 14px 0; font-size: 13px; line-height: 1.5;
+    color: var(--text-muted);
+  }
+  .tour-popover .tour-buttons {
+    display: flex; align-items: center; gap: 6px;
+  }
+  .tour-popover .btn { font-size: 12.5px; padding: 6px 12px; }
+  .tour-popover #tour-skip { color: var(--text-faint); border-color: transparent; background: none; }
+  .tour-popover #tour-skip:hover { color: var(--text); background: var(--hover-bg); border-color: var(--border); }
+  .tour-popover .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  @media (max-width: 800px) {
+    .tour-popover { width: calc(100vw - 24px); }
+  }
   .node-text {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-weight: 500;
@@ -925,6 +982,20 @@
 </header>
 <button class="floating-exit-fs" id="exit-fullscreen-btn" title="Exit fullscreen">⛶ Exit</button>
 <div class="context-menu" id="context-menu"></div>
+<div class="tour-overlay" id="tour-overlay">
+  <div class="tour-spotlight" id="tour-spotlight"></div>
+  <div class="tour-popover" id="tour-popover">
+    <div class="tour-step-num" id="tour-step-num"></div>
+    <h3 class="tour-title" id="tour-title"></h3>
+    <p class="tour-body" id="tour-body"></p>
+    <div class="tour-buttons">
+      <button class="btn" id="tour-skip">Skip tour</button>
+      <span style="flex:1"></span>
+      <button class="btn" id="tour-back">Back</button>
+      <button class="btn primary" id="tour-next">Next</button>
+    </div>
+  </div>
+</div>
 <div class="issues-panel" id="issues-panel">
   <div class="issues-head">
     <span>Flow issues</span>
@@ -2514,6 +2585,11 @@ document.addEventListener('keydown', (ev) => {
     ev.preventDefault();
     return;
   }
+  if (tourOverlay && tourOverlay.classList.contains('open') && ev.key === 'Escape') {
+    endTour();
+    ev.preventDefault();
+    return;
+  }
   if (ev.key === ' ' || ev.code === 'Space') {
     if (!state.spaceDown) {
       state.spaceDown = true;
@@ -3490,7 +3566,13 @@ function renderPanel() {
           <p><strong>Auto-save</strong> — every change is written to localStorage in the background. Use Save / Save As to also write to a real file on disk.</p>
         </div>
       </details>
+
+      <div style="margin-top: 16px;">
+        <button class="btn primary" id="restart-tour-btn" style="width:100%;">🚀 Restart the welcome tour</button>
+      </div>
     `;
+    const restartBtn = document.getElementById('restart-tour-btn');
+    if (restartBtn) restartBtn.addEventListener('click', () => startTour());
     return;
   }
 
@@ -5369,6 +5451,143 @@ document.querySelectorAll('.panel-tab').forEach(t => {
   });
 });
 
+// ---------- Onboarding tour ----------
+const TOUR_STEPS = [
+  {
+    selector: null,
+    title: 'Welcome to FlowSpec',
+    body: 'Build flowcharts visually and turn them into clean structured text. This quick tour walks through the basics — skip anytime.',
+  },
+  {
+    selector: '#add-nodes-group, #add-menu-btn, .toolbar',
+    title: 'Add nodes',
+    body: 'Click any node-type button — Start, Process, Decision, etc. — to drop one on the canvas. Press 1–8 for quick-add. On mobile they\'re tucked behind the + Add menu.',
+  },
+  {
+    selector: '#canvas-wrap',
+    title: 'Move &amp; connect',
+    body: 'Drag a node to move it. Click a node to select; small handles appear on its edges — drag any handle to another node to create a connection. Pinch / scroll-zoom / pan are all supported.',
+  },
+  {
+    selector: '.panel-tabs, .panel-collapsed-rail',
+    title: 'Properties, Spec, Help',
+    body: 'The right panel has three tabs. Properties edits the selected item, Spec shows your flow as text in five formats, and Help has every shortcut. Tap a tab to expand the panel.',
+  },
+  {
+    selector: '#save-btn, #more-menu-btn',
+    title: 'Save to disk',
+    body: 'Press Cmd/Ctrl+S (or 💾 Save) to write your project as a .flowspec.json file. On Chrome/Edge it saves silently in place once linked; elsewhere it downloads.',
+  },
+  {
+    selector: '#auto-layout-btn, #add-frame-btn',
+    title: 'Tidy &amp; group',
+    body: '▦ Tidy auto-arranges everything top-to-bottom in layers. ▢ Frame drops a labeled container around a set of nodes — they move with the frame.',
+  },
+  {
+    selector: '#theme-toggle-btn',
+    title: 'You\'re all set',
+    body: 'Toggle dark/light, hide the toolbar (⌃), or go fullscreen (⛶) for max canvas. Pop open the Help tab any time for the full keyboard-shortcut list.',
+  },
+];
+let tourIdx = 0;
+const tourOverlay = document.getElementById('tour-overlay');
+const tourSpot = document.getElementById('tour-spotlight');
+const tourPopover = document.getElementById('tour-popover');
+
+function positionTourStep(step) {
+  // Reset
+  tourSpot.classList.remove('global');
+  tourPopover.style.transform = '';
+
+  // No selector or no visible target → global backdrop, centered popover
+  let target = null;
+  if (step.selector) {
+    const selectors = step.selector.split(',').map(s => s.trim());
+    for (const sel of selectors) {
+      const candidate = document.querySelector(sel);
+      if (candidate && candidate.offsetParent !== null) { target = candidate; break; }
+    }
+  }
+  if (!target) {
+    tourSpot.classList.add('global');
+    tourSpot.style.left = '0px'; tourSpot.style.top = '0px';
+    tourSpot.style.width = '0px'; tourSpot.style.height = '0px';
+    tourPopover.style.left = '50%';
+    tourPopover.style.top = '50%';
+    tourPopover.style.transform = 'translate(-50%, -50%)';
+    return;
+  }
+
+  const r = target.getBoundingClientRect();
+  const pad = 6;
+  tourSpot.style.left = (r.left - pad) + 'px';
+  tourSpot.style.top = (r.top - pad) + 'px';
+  tourSpot.style.width = (r.width + pad * 2) + 'px';
+  tourSpot.style.height = (r.height + pad * 2) + 'px';
+
+  // Place popover. Measure popover after content is set.
+  const popRect = tourPopover.getBoundingClientRect();
+  const popW = Math.max(320, popRect.width || 320);
+  const popH = Math.max(180, popRect.height || 200);
+  const margin = 16;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  let left, top;
+  if (r.bottom + margin + popH < vh) {
+    top = r.bottom + margin;
+    left = clamp(r.left + r.width / 2 - popW / 2, 8, vw - popW - 8);
+  } else if (r.top - margin - popH > 0) {
+    top = r.top - margin - popH;
+    left = clamp(r.left + r.width / 2 - popW / 2, 8, vw - popW - 8);
+  } else if (r.right + margin + popW < vw) {
+    left = r.right + margin;
+    top = clamp(r.top + r.height / 2 - popH / 2, 8, vh - popH - 8);
+  } else if (r.left - margin - popW > 0) {
+    left = r.left - margin - popW;
+    top = clamp(r.top + r.height / 2 - popH / 2, 8, vh - popH - 8);
+  } else {
+    left = (vw - popW) / 2;
+    top = (vh - popH) / 2;
+  }
+  tourPopover.style.left = left + 'px';
+  tourPopover.style.top = top + 'px';
+}
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+function renderTourStep() {
+  const step = TOUR_STEPS[tourIdx];
+  if (!step) { endTour(); return; }
+  document.getElementById('tour-title').innerHTML = step.title;
+  document.getElementById('tour-body').innerHTML = step.body;
+  document.getElementById('tour-step-num').textContent = `Step ${tourIdx + 1} of ${TOUR_STEPS.length}`;
+  const back = document.getElementById('tour-back');
+  const next = document.getElementById('tour-next');
+  back.disabled = (tourIdx === 0);
+  next.textContent = (tourIdx === TOUR_STEPS.length - 1) ? 'Finish' : 'Next →';
+  positionTourStep(step);
+  // Reposition again after a frame so popover measurement is accurate
+  requestAnimationFrame(() => positionTourStep(step));
+}
+function startTour() {
+  tourIdx = 0;
+  tourOverlay.classList.add('open');
+  renderTourStep();
+}
+function endTour() {
+  tourOverlay.classList.remove('open');
+  try { localStorage.setItem('flowspec.tourSeen', '1'); } catch(e) {}
+}
+document.getElementById('tour-skip').addEventListener('click', endTour);
+document.getElementById('tour-back').addEventListener('click', () => {
+  if (tourIdx > 0) { tourIdx--; renderTourStep(); }
+});
+document.getElementById('tour-next').addEventListener('click', () => {
+  if (tourIdx < TOUR_STEPS.length - 1) { tourIdx++; renderTourStep(); }
+  else endTour();
+});
+window.addEventListener('resize', () => {
+  if (tourOverlay.classList.contains('open')) renderTourStep();
+});
+
 // ---------- Init ----------
 buildToolbar();
 state.loading = true;
@@ -5405,6 +5624,13 @@ if (isMobileViewport()) {
     applyToolsCollapsed(c);
   } catch(e) { applyToolsCollapsed(false); }
 }
+
+// First-launch onboarding tour
+try {
+  if (!localStorage.getItem('flowspec.tourSeen')) {
+    setTimeout(() => startTour(), 700);
+  }
+} catch(e) {}
 
 // One-time cleanup of obsolete IndexedDB keys (workspace dir handle, per-project dir handles)
 (async function migrateOldFsKeys() {
