@@ -457,12 +457,15 @@
     main { flex-direction: column; }
     aside.panel {
       width: 100% !important; min-width: 0 !important;
-      max-height: 50dvh;
+      flex-shrink: 0;
+      min-height: 56dvh;
+      max-height: 56dvh;
       border-left: none; border-top: 1px solid var(--border);
-      transition: max-height 0.18s ease;
+      transition: min-height 0.18s ease, max-height 0.18s ease;
     }
     aside.panel.collapsed {
       width: 100% !important; min-width: 0 !important;
+      min-height: 44px !important;
       max-height: 44px !important;
     }
     /* At narrow widths, collapsed panel keeps the tab bar visible, not the vertical rail */
@@ -474,6 +477,31 @@
     /* Dropdown menu spans more width on small screens */
     .dropdown-menu { right: auto; left: 0; min-width: 240px; }
   }
+
+  /* Mobile / desktop visibility helpers */
+  .mobile-only { display: none; }
+  @media (max-width: 800px) {
+    .mobile-only { display: inline-flex; }
+    .desktop-only { display: none !important; }
+  }
+
+  /* Fullscreen mode — hides header + toolbar for max canvas */
+  body.fullscreen header,
+  body.fullscreen .toolbar { display: none; }
+  .floating-exit-fs {
+    position: fixed; top: 8px; right: 8px;
+    z-index: 60;
+    display: none;
+    background: rgba(0,0,0,0.55);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 6px;
+    padding: 6px 10px; font-size: 14px;
+    cursor: pointer; font-family: inherit;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  }
+  .floating-exit-fs:hover { background: rgba(0,0,0,0.7); }
+  body.fullscreen .floating-exit-fs { display: inline-flex; align-items: center; gap: 4px; }
 
   /* Touch-friendly tap targets on coarse pointers (phones, tablets) */
   @media (pointer: coarse) {
@@ -586,12 +614,13 @@
   </div>
   <div class="actions">
     <button class="btn icon" id="theme-toggle-btn" title="Toggle dark / light theme">🌙</button>
-    <button class="btn" id="output-toggle-btn" title="Open the Spec output tab">📄 Spec</button>
-    <button class="btn" id="projects-btn" title="Manage projects — switch, create, rename, delete">📁 Projects</button>
-    <button class="btn" id="open-btn" title="Open a .flowspec.json file from disk (Cmd/Ctrl+O)">📂 Open…</button>
-    <button class="btn" id="save-btn" title="Save to linked file, or pick a location if none (Cmd/Ctrl+S)">💾 Save</button>
-    <button class="btn" id="save-as-btn" title="Save a copy to a new file (Cmd/Ctrl+Shift+S)">Save As…</button>
-    <div class="dropdown" id="export-dropdown">
+    <button class="btn icon" id="fullscreen-btn" title="Hide header & toolbar for more canvas (toggle)">⛶</button>
+    <button class="btn desktop-only" id="output-toggle-btn" title="Open the Spec output tab">📄 Spec</button>
+    <button class="btn desktop-only" id="projects-btn" title="Manage projects — switch, create, rename, delete">📁 Projects</button>
+    <button class="btn desktop-only" id="open-btn" title="Open a .flowspec.json file from disk (Cmd/Ctrl+O)">📂 Open…</button>
+    <button class="btn desktop-only" id="save-btn" title="Save to linked file, or pick a location if none (Cmd/Ctrl+S)">💾 Save</button>
+    <button class="btn desktop-only" id="save-as-btn" title="Save a copy to a new file (Cmd/Ctrl+Shift+S)">Save As…</button>
+    <div class="dropdown desktop-only" id="export-dropdown">
       <button class="btn" id="export-menu-btn" title="Export to another format">⤓ Export ▾</button>
       <div class="dropdown-menu" id="export-menu">
         <button class="dropdown-item" data-export="json-copy">JSON copy (.flowspec.json)</button>
@@ -599,17 +628,39 @@
         <button class="dropdown-item" data-export="spec">Spec text (open tab)</button>
       </div>
     </div>
+    <div class="dropdown mobile-only" id="more-dropdown">
+      <button class="btn" id="more-menu-btn" title="More actions">⋮ More</button>
+      <div class="dropdown-menu" id="more-menu">
+        <button class="dropdown-item" data-more="spec">📄 Spec tab</button>
+        <button class="dropdown-item" data-more="projects">📁 Projects…</button>
+        <button class="dropdown-item" data-more="open">📂 Open…</button>
+        <button class="dropdown-item" data-more="save">💾 Save</button>
+        <button class="dropdown-item" data-more="save-as">💾 Save As…</button>
+        <hr style="border:none; border-top:1px solid var(--border); margin:4px 0;">
+        <button class="dropdown-item" data-more="export-json">⤓ JSON copy</button>
+        <button class="dropdown-item" data-more="export-png">🖼 PNG image</button>
+      </div>
+    </div>
     <input type="file" id="open-file-fallback" style="display:none" accept="application/json,.json">
   </div>
 </header>
+<button class="floating-exit-fs" id="exit-fullscreen-btn" title="Exit fullscreen">⛶ Exit</button>
 
 <div class="toolbar">
   <div class="group">
     <button class="btn icon" id="undo-btn" title="Undo (Cmd/Ctrl+Z)" disabled>↶ Undo</button>
     <button class="btn icon" id="redo-btn" title="Redo (Cmd/Ctrl+Shift+Z)" disabled>↷ Redo</button>
   </div>
-  <div class="group" id="add-nodes-group">
+  <div class="group desktop-only" id="add-nodes-group">
     <!-- Filled by JS -->
+  </div>
+  <div class="group mobile-only">
+    <div class="dropdown" id="add-dropdown">
+      <button class="btn" id="add-menu-btn" title="Add a node">+ Add ▾</button>
+      <div class="dropdown-menu" id="add-menu" style="left:0; right:auto;">
+        <!-- Filled by JS -->
+      </div>
+    </div>
   </div>
   <div class="group">
     <button class="btn" id="connect-btn" title="Click two nodes to connect them (C)">↳ Connect</button>
@@ -2330,7 +2381,9 @@ function traverseAscii(node, visited, depth, prefix) {
 // ---------- Toolbar setup ----------
 function buildToolbar() {
   const g = document.getElementById('add-nodes-group');
+  const menu = document.getElementById('add-menu');
   g.innerHTML = '';
+  if (menu) menu.innerHTML = '';
   for (const [k, v] of Object.entries(NODE_TYPES)) {
     const b = document.createElement('button');
     b.className = 'btn add-node-btn';
@@ -2338,6 +2391,17 @@ function buildToolbar() {
     b.title = `${v.label} — ${v.hint || 'Add a node'}`;
     b.addEventListener('click', () => addNode(k));
     g.appendChild(b);
+
+    if (menu) {
+      const mi = document.createElement('button');
+      mi.className = 'dropdown-item';
+      mi.innerHTML = `<span class="dot" style="display:inline-block; width:10px; height:10px; border-radius:2px; vertical-align:middle; margin-right:8px; background:${v.color}; border:1px solid ${v.stroke};"></span>${v.label}`;
+      mi.addEventListener('click', () => {
+        document.getElementById('add-dropdown').classList.remove('open');
+        addNode(k);
+      });
+      menu.appendChild(mi);
+    }
   }
 }
 
@@ -2365,11 +2429,17 @@ document.getElementById('theme-toggle-btn').addEventListener('click', () => {
 });
 
 // ---------- Right panel collapse ----------
+function isMobileViewport() {
+  return window.matchMedia && window.matchMedia('(max-width: 800px)').matches;
+}
 function applyPanelCollapsed(collapsed) {
   state.panelCollapsed = collapsed;
   const panel = document.getElementById('right-panel');
   if (panel) panel.classList.toggle('collapsed', collapsed);
-  try { localStorage.setItem('flowspec.panelCollapsed', collapsed ? '1' : '0'); } catch(e) {}
+  // Only persist on desktop — mobile session always defaults collapsed
+  if (!isMobileViewport()) {
+    try { localStorage.setItem('flowspec.panelCollapsed', collapsed ? '1' : '0'); } catch(e) {}
+  }
 }
 function togglePanel() { applyPanelCollapsed(!state.panelCollapsed); }
 
@@ -3002,18 +3072,33 @@ document.getElementById('open-file-fallback').addEventListener('change', async (
   e.target.value = '';
 });
 
-// Export dropdown
-const exportDropdown = document.getElementById('export-dropdown');
-document.getElementById('export-menu-btn').addEventListener('click', (e) => {
-  e.stopPropagation();
-  exportDropdown.classList.toggle('open');
-});
+// Generic helper to wire a dropdown button + outside-click close
+function wireDropdown(dropdownId, btnId) {
+  const dd = document.getElementById(dropdownId);
+  const btn = document.getElementById(btnId);
+  if (!dd || !btn) return;
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    // Close other dropdowns
+    document.querySelectorAll('.dropdown.open').forEach(d => { if (d !== dd) d.classList.remove('open'); });
+    dd.classList.toggle('open');
+  });
+}
+wireDropdown('export-dropdown', 'export-menu-btn');
+wireDropdown('more-dropdown', 'more-menu-btn');
+wireDropdown('add-dropdown', 'add-menu-btn');
+
+// Global click closes any open dropdown
 document.addEventListener('click', (e) => {
-  if (!exportDropdown.contains(e.target)) exportDropdown.classList.remove('open');
+  document.querySelectorAll('.dropdown.open').forEach(dd => {
+    if (!dd.contains(e.target)) dd.classList.remove('open');
+  });
 });
+
+// Export menu items
 document.querySelectorAll('#export-menu .dropdown-item').forEach(item => {
   item.addEventListener('click', () => {
-    exportDropdown.classList.remove('open');
+    document.getElementById('export-dropdown').classList.remove('open');
     const what = item.dataset.export;
     if (what === 'json-copy') exportJsonCopy();
     else if (what === 'png') exportPng();
@@ -3024,6 +3109,35 @@ document.querySelectorAll('#export-menu .dropdown-item').forEach(item => {
     }
   });
 });
+
+// More menu items (mobile only — these re-route to existing handlers)
+document.querySelectorAll('#more-menu .dropdown-item').forEach(item => {
+  item.addEventListener('click', () => {
+    document.getElementById('more-dropdown').classList.remove('open');
+    const what = item.dataset.more;
+    switch (what) {
+      case 'spec':
+        state.panTab = 'spec';
+        applyPanelCollapsed(false);
+        render();
+        break;
+      case 'projects': openProjectsModal(); break;
+      case 'open': openFile(); break;
+      case 'save': saveFile(); break;
+      case 'save-as': saveFileAs(); break;
+      case 'export-json': exportJsonCopy(); break;
+      case 'export-png': exportPng(); break;
+    }
+  });
+});
+
+// Fullscreen toggle (hide header + toolbar for maximum canvas)
+function toggleFullscreen(force) {
+  const want = typeof force === 'boolean' ? force : !document.body.classList.contains('fullscreen');
+  document.body.classList.toggle('fullscreen', want);
+}
+document.getElementById('fullscreen-btn').addEventListener('click', () => toggleFullscreen());
+document.getElementById('exit-fullscreen-btn').addEventListener('click', () => toggleFullscreen(false));
 
 // Save / Open keyboard shortcuts
 document.addEventListener('keydown', (ev) => {
@@ -3118,6 +3232,7 @@ async function exportPng() {
 document.querySelectorAll('.panel-tab').forEach(t => {
   t.addEventListener('click', () => {
     state.panTab = t.dataset.tab;
+    if (state.panelCollapsed) applyPanelCollapsed(false);
     renderPanel();
   });
 });
@@ -3139,11 +3254,15 @@ if (!loaded) {
 // Apply theme button label
 applyTheme(document.documentElement.getAttribute('data-theme') || 'dark');
 
-// Restore right-panel collapsed state
-try {
-  const c = localStorage.getItem('flowspec.panelCollapsed') === '1';
-  applyPanelCollapsed(c);
-} catch(e) { applyPanelCollapsed(false); }
+// Right-panel collapsed state: mobile always defaults collapsed; desktop restores from localStorage
+if (isMobileViewport()) {
+  applyPanelCollapsed(true);
+} else {
+  try {
+    const c = localStorage.getItem('flowspec.panelCollapsed') === '1';
+    applyPanelCollapsed(c);
+  } catch(e) { applyPanelCollapsed(false); }
+}
 
 // One-time cleanup of obsolete IndexedDB keys (workspace dir handle, per-project dir handles)
 (async function migrateOldFsKeys() {
