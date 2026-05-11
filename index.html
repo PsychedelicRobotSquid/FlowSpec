@@ -1017,7 +1017,7 @@
 <body>
 
 <header>
-  <h1>FlowSpec <span class="tag">visual → spec</span></h1>
+  <h1>FlowSpec <span class="tag" id="version-tag">visual → spec</span></h1>
   <div class="title-wrap">
     <input type="text" class="title-input" id="title-input" placeholder="Untitled flow" value="Untitled flow">
     <div class="title-meta" id="title-meta">
@@ -1281,6 +1281,7 @@
 // =============================================================
 // FlowSpec — visual flowchart builder with LLM-friendly text out
 // =============================================================
+const FLOWSPEC_VERSION = '0.10.0';
 
 const NODE_TYPES = {
   start:    { label: 'Start',    color: '#c0dd97', stroke: '#3b6d11', text: '#173404', shape: 'pill',    hint: 'Where the flow begins. Typically one per chart.' },
@@ -3760,6 +3761,9 @@ function renderPanel() {
       <div style="margin-top: 16px;">
         <button class="btn primary" id="restart-tour-btn" style="width:100%;">🚀 Restart the welcome tour</button>
       </div>
+      <div style="margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 11.5px; color: var(--text-faint); text-align: center;">
+        FlowSpec <strong style="color:var(--text-muted);">v${escapeHtml(FLOWSPEC_VERSION)}</strong> · <a href="https://github.com/PsychedelicRobotSquid/flowspec/blob/main/CHANGELOG.md" target="_blank" rel="noopener" style="color:var(--text-muted);">Changelog</a>
+      </div>
     `;
     const restartBtn = document.getElementById('restart-tour-btn');
     if (restartBtn) restartBtn.addEventListener('click', () => startTour());
@@ -6101,6 +6105,12 @@ document.getElementById('tour-next').addEventListener('click', () => {
 window.addEventListener('resize', () => {
   if (tourOverlay.classList.contains('open')) renderTourStep();
 });
+
+// Inject version into header tag
+(function setVersionTag() {
+  const el = document.getElementById('version-tag');
+  if (el) el.textContent = `v${FLOWSPEC_VERSION} · visual → spec`;
+})();
 
 // ---------- Init ----------
 buildToolbar();
