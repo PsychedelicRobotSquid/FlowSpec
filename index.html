@@ -895,12 +895,8 @@
   /* Fullscreen mode — hides header + toolbar for max canvas */
   body.fullscreen header,
   body.fullscreen .toolbar { display: none; }
-  /* Tools collapsed — hide every toolbar group except the toggle itself,
-     so users can still see the toggle and expand the toolbar back */
-  body.tools-collapsed .toolbar > .group:not(.toolbar-toggle-group) { display: none; }
-  body.tools-collapsed .toolbar { padding-top: 4px; padding-bottom: 4px; }
-  .toolbar-toggle-group { border-right: 1px solid var(--border); }
-  body.tools-collapsed .toolbar-toggle-group { border-right: none; }
+  /* Tools collapsed — hides just the toolbar (header toggle stays visible) */
+  body.tools-collapsed .toolbar { display: none; }
   /* Hide button text labels at narrow widths — buttons become icon-only */
   @media (max-width: 800px) {
     .btn-label { display: none; }
@@ -1078,6 +1074,7 @@
     </div>
   </div>
   <div class="actions">
+    <button class="btn icon" id="tools-toggle-btn" title="Show / hide the toolbar">⌃</button>
     <button class="btn icon" id="theme-toggle-btn" title="Toggle dark / light theme">🌙</button>
     <button class="btn desktop-only" id="output-toggle-btn" title="Open the Spec output tab">📄 Spec</button>
     <button class="btn desktop-only" id="projects-btn" title="Manage projects — switch, create, rename, delete">📁 Projects</button>
@@ -1134,9 +1131,6 @@
   <div class="issues-body" id="issues-body"></div>
 </div>
 <div class="toolbar">
-  <div class="group toolbar-toggle-group">
-    <button class="btn icon" id="tools-toggle-btn" title="Show / hide the toolbar">⌃</button>
-  </div>
   <div class="group">
     <button class="btn icon" id="undo-btn" title="Undo (Cmd/Ctrl+Z)" disabled>↶<span class="btn-label"> Undo</span></button>
     <button class="btn icon" id="redo-btn" title="Redo (Cmd/Ctrl+Shift+Z)" disabled>↷<span class="btn-label"> Redo</span></button>
@@ -1170,9 +1164,9 @@
           <!-- Filled by JS -->
         </div>
       </div>
-      <button class="floating-fs-tool" id="floating-tidy-btn" title="Tidy / Auto-layout (L)">▦</button>
       <button class="floating-fs-tool" id="floating-fit-btn" title="Fit all to view (F)">⊡</button>
       <button class="floating-fs-tool" id="floating-reset-btn" title="Reset view to origin">⊙</button>
+      <button class="floating-fs-tool" id="floating-tidy-btn" title="Tidy / Auto-layout (L)">▦</button>
       <button class="floating-fs-tool floating-fs-exit" id="fullscreen-toggle-btn" title="Enter fullscreen">⛶</button>
     </div>
     <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
@@ -1336,7 +1330,7 @@
 // =============================================================
 // FlowSpec — visual flowchart builder with LLM-friendly text out
 // =============================================================
-const FLOWSPEC_VERSION = '0.15.1';
+const FLOWSPEC_VERSION = '0.15.2';
 
 const NODE_TYPES = {
   start:    { label: 'Start',    color: '#c0dd97', stroke: '#3b6d11', text: '#173404', shape: 'pill',    hint: 'Where the flow begins. Typically one per chart.' },
@@ -4041,9 +4035,9 @@ function renderPanel() {
       <details class="help-section">
         <summary>Theme, fullscreen, layout</summary>
         <div class="help-body">
-          <p><strong>Floating canvas toolbar</strong> — top-left of the canvas, always visible. Contains <span class="kbd">+ Add ▾</span> (all 8 node types + Frame), <span class="kbd">▦ Tidy</span>, <span class="kbd">⊡ Fit</span>, <span class="kbd">⊙ Reset</span>, and <span class="kbd">⛶</span> fullscreen toggle. Stays put in fullscreen too.</p>
+          <p><strong>Floating canvas toolbar</strong> — top-left of the canvas, always visible. Contains <span class="kbd">+ Add ▾</span> (all 8 node types + Frame), <span class="kbd">⊡ Fit</span>, <span class="kbd">⊙ Reset</span>, <span class="kbd">▦ Tidy</span>, and <span class="kbd">⛶</span> fullscreen toggle. Stays put in fullscreen too.</p>
           <p><strong>Theme</strong> — <span class="kbd">🌙 / ☀</span> in the header toggles dark / light. Persists.</p>
-          <p><strong>Tools collapse</strong> — <span class="kbd">⌃</span> in the header hides the top toolbar (Undo/Redo/Connect/Pan/Zoom/Issues/Delete). The floating toolbar stays.</p>
+          <p><strong>Tools collapse</strong> — <span class="kbd">⌃</span> in the header (just before the theme toggle) hides the top toolbar. The floating canvas toolbar stays.</p>
           <p><strong>Fullscreen</strong> — <span class="kbd">⛶</span> in the floating toolbar hides the header + top toolbar entirely. Tap again to bring them back.</p>
           <p><strong>Right panel</strong> — click <span class="kbd">›</span> to hide it; on desktop a small rail shows the tabs, on mobile the tab strip stays at the bottom. Tap any tab to expand.</p>
           <p><strong>Origin marker</strong> — a faint 800×600 rectangle with a small dot marks world (0, 0). It's where <span class="kbd">⊙ Reset</span> snaps you back to. Always visible at low opacity.</p>
@@ -6431,9 +6425,9 @@ const TOUR_STEPS = [
     body: 'Drag a node to move it. Tap / click a node to select; small handles appear on its edges — drag any handle to another node to create a connection. Pinch / scroll-zoom / pan are all supported.',
   },
   {
-    selector: '#floating-tidy-btn, #floating-fit-btn, #floating-reset-btn, #floating-fs-tools',
-    title: 'Tidy, Fit, Reset, Fullscreen',
-    body: '▦ Tidy resolves overlaps without rearranging your layout. ⊡ Fit frames everything in view. ⊙ Reset goes back to 100% at origin. ⛶ Fullscreen hides the header + toolbar for max canvas.',
+    selector: '#floating-fit-btn, #floating-reset-btn, #floating-tidy-btn, #floating-fs-tools',
+    title: 'Fit, Reset, Tidy, Fullscreen',
+    body: '⊡ Fit frames everything in view. ⊙ Reset goes back to 100% at origin. ▦ Tidy resolves overlaps without rearranging your layout. ⛶ Fullscreen hides the header + toolbar for max canvas.',
   },
   {
     selector: '.panel-tabs, .panel-collapsed-rail',

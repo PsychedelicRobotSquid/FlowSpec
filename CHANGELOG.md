@@ -2,6 +2,12 @@
 
 All notable changes to FlowSpec. Format roughly follows [Keep a Changelog](https://keepachangelog.com/). Versioning is loose pre-1.0 — minor bumps for feature batches, patch bumps for fixes.
 
+## [0.15.2] — 2026-05-11
+
+### Changed
+- **Tools toggle (`⌃`) moved back into the header**, positioned just before the theme toggle (`🌙`). Collapsing the toolbar now hides the entire toolbar again (since the toggle lives elsewhere). The in-toolbar toggle from 0.15.1 didn't actually save much vertical room
+- **Floating canvas toolbar reordered** to put the most common actions first: `+ Add ▾` → `⊡ Fit` → `⊙ Reset` → `▦ Tidy` → `⛶` fullscreen
+
 ## [0.15.1] — 2026-05-11
 
 ### Changed
