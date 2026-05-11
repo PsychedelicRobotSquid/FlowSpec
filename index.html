@@ -443,6 +443,39 @@
     width: auto; padding: 0; margin: 0;
     accent-color: var(--accent);
   }
+  /* AI modal */
+  .ai-step-label {
+    font-size: 11px; font-weight: 500; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.04em;
+    margin-bottom: 4px;
+  }
+  .ai-step-help {
+    font-size: 12px; color: var(--text-faint); line-height: 1.45;
+    margin: 0 0 8px 0;
+  }
+  .ai-step-help code {
+    background: var(--surface-3);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 11.5px;
+  }
+  #ai-prompt-text, #ai-response-text {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+    font-size: 12px; line-height: 1.45;
+    background: var(--field-bg); color: var(--text);
+    resize: vertical;
+  }
+  #ai-prompt-text {
+    background: var(--surface-3);
+    color: var(--text);
+  }
+  #ai-prompt-text:focus, #ai-response-text:focus {
+    outline: none; border-color: var(--text-faint);
+  }
   .color-swatch {
     width: 26px; height: 26px;
     border-radius: 6px;
@@ -481,6 +514,13 @@
     border-radius: 3px; font-family: ui-monospace, monospace;
     font-size: 11px;
   }
+  .link-btn {
+    background: none; border: none; padding: 0;
+    color: var(--accent); cursor: pointer;
+    font: inherit; text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .link-btn:hover { opacity: 0.85; }
   /* Help tab styles */
   .help-section { margin: 0 0 8px 0; }
   .help-section > summary {
@@ -1005,19 +1045,20 @@
         <button class="dropdown-item" data-export="spec">Spec text (open tab)</button>
       </div>
     </div>
-    <div class="dropdown mobile-only" id="more-dropdown">
+    <div class="dropdown" id="more-dropdown">
       <button class="btn" id="more-menu-btn" title="More actions">⋮ More</button>
       <div class="dropdown-menu" id="more-menu">
-        <button class="dropdown-item" data-more="spec">📄 Spec tab</button>
-        <button class="dropdown-item" data-more="projects">📁 Projects…</button>
-        <button class="dropdown-item" data-more="open">📂 Open…</button>
-        <button class="dropdown-item" data-more="save">💾 Save</button>
-        <button class="dropdown-item" data-more="save-as">💾 Save As…</button>
-        <hr style="border:none; border-top:1px solid var(--border); margin:4px 0;">
-        <button class="dropdown-item" data-more="export-json">⤓ JSON copy</button>
-        <button class="dropdown-item" data-more="export-png">🖼 PNG image</button>
-        <hr style="border:none; border-top:1px solid var(--border); margin:4px 0;">
+        <button class="dropdown-item" data-more="ai">🤖 Generate with AI…</button>
         <button class="dropdown-item" data-more="find-replace">🔎 Find &amp; Replace…</button>
+        <hr class="mobile-only" style="border:none; border-top:1px solid var(--border); margin:4px 0;">
+        <button class="dropdown-item mobile-only" data-more="spec">📄 Spec tab</button>
+        <button class="dropdown-item mobile-only" data-more="projects">📁 Projects…</button>
+        <button class="dropdown-item mobile-only" data-more="open">📂 Open…</button>
+        <button class="dropdown-item mobile-only" data-more="save">💾 Save</button>
+        <button class="dropdown-item mobile-only" data-more="save-as">💾 Save As…</button>
+        <hr class="mobile-only" style="border:none; border-top:1px solid var(--border); margin:4px 0;">
+        <button class="dropdown-item mobile-only" data-more="export-json">⤓ JSON copy</button>
+        <button class="dropdown-item mobile-only" data-more="export-png">🖼 PNG image</button>
       </div>
     </div>
     <input type="file" id="open-file-fallback" style="display:none" accept="application/json,.json">
@@ -1134,6 +1175,48 @@
   </aside>
 </main>
 
+
+<div class="modal-backdrop" id="ai-modal">
+  <div class="modal" style="width: 600px; max-width: 96vw; max-height: 92dvh;">
+    <div class="modal-header">
+      <h2>🤖 Generate with AI</h2>
+      <button class="modal-close" id="ai-close" title="Close">×</button>
+    </div>
+    <div class="modal-body" style="padding: 14px 16px;">
+      <div class="ai-step">
+        <div class="ai-step-label">Step 1 — Copy this prompt into any LLM</div>
+        <p class="ai-step-help">Paste it into ChatGPT, Claude, Gemini, or any chat model, then describe what you want where it says <code>[describe what you want]</code>.</p>
+        <label class="fr-check" style="margin: 6px 0 8px;">
+          <input type="checkbox" id="ai-include-current">
+          Include my current flow as a starting point
+          <span id="ai-current-summary" style="color:var(--text-faint); margin-left:4px;"></span>
+        </label>
+        <textarea id="ai-prompt-text" rows="8" readonly></textarea>
+        <div style="display:flex; gap:6px; margin-top: 8px; flex-wrap: wrap;">
+          <button class="btn primary" id="ai-copy-btn">📋 Copy prompt</button>
+          <button class="btn" id="ai-save-prompt-btn">Save as .txt</button>
+          <span style="flex:1"></span>
+          <span id="ai-copy-status" style="font-size:12px; color:var(--text-faint); align-self:center;"></span>
+        </div>
+      </div>
+      <hr style="border:none; border-top:1px solid var(--border); margin: 16px 0;">
+      <div class="ai-step">
+        <div class="ai-step-label">Step 2 — Paste the LLM's response</div>
+        <p class="ai-step-help">The app strips markdown code fences automatically. If positions are missing, auto-layout will tidy things up.</p>
+        <textarea id="ai-response-text" rows="6" placeholder="Paste the JSON the LLM produces here…"></textarea>
+        <div style="display:flex; gap:6px; margin-top: 8px; flex-wrap: wrap; align-items: center;">
+          <label class="fr-check" style="margin:0;">
+            <input type="checkbox" id="ai-replace-current">
+            Replace current project (instead of opening new)
+          </label>
+          <span style="flex:1"></span>
+          <button class="btn primary" id="ai-load-btn">✨ Load</button>
+        </div>
+        <div id="ai-load-status" style="margin-top: 8px; font-size: 12px; color: var(--text-muted);"></div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <div class="modal-backdrop" id="findreplace-modal">
   <div class="modal" style="width: 440px;">
@@ -2634,6 +2717,12 @@ document.addEventListener('keydown', (ev) => {
     ev.preventDefault();
     return;
   }
+  const aiModal = document.getElementById('ai-modal');
+  if (aiModal && aiModal.classList.contains('open') && ev.key === 'Escape') {
+    closeAiModal();
+    ev.preventDefault();
+    return;
+  }
   if (tourOverlay && tourOverlay.classList.contains('open') && ev.key === 'Escape') {
     endTour();
     ev.preventDefault();
@@ -3533,6 +3622,17 @@ function renderPanel() {
           <p><strong>Move</strong> — drag any node. Arrow keys nudge selected nodes (<span class="kbd">Shift</span> for a bigger step).</p>
           <p><strong>Label or describe</strong> — click a node, edit Label/Description in the Properties tab. Press <span class="kbd">Enter</span> inside the label for a line break.</p>
           <p><strong>Delete</strong> — select, then <span class="kbd">Delete</span>.</p>
+          <p style="margin-top:8px;">Don't want to draw it yourself? Open <span class="kbd">⋮ More</span> → <strong>🤖 Generate with AI</strong> to build a flow from a description.</p>
+        </div>
+      </details>
+
+      <details class="help-section">
+        <summary>Generate with AI</summary>
+        <div class="help-body">
+          <p>FlowSpec can hand off to any LLM (ChatGPT, Claude, Gemini, etc.) to build a flow for you.</p>
+          <p>Open <span class="kbd">⋮ More</span> → <strong>🤖 Generate with AI</strong>:</p>
+          <p><strong>Step 1</strong> — copy the prompt (it contains the file format + layout rules). Paste into any chat model and describe what you want where it says <code>[describe what you want]</code>. Tick <strong>Include my current flow</strong> to have the model extend or modify what you've already drawn.</p>
+          <p><strong>Step 2</strong> — paste the model's JSON response back. Click <strong>Load</strong>. The app opens it as a new project (or replaces the current one if you tick the box). Markdown code fences are stripped automatically; auto-layout runs if positions are missing.</p>
         </div>
       </details>
 
@@ -3638,6 +3738,7 @@ function renderPanel() {
             <tr><td>Cmd/Ctrl + Z</td><td>Undo</td></tr>
             <tr><td>Cmd/Ctrl + Shift + Z</td><td>Redo (or Ctrl + Y)</td></tr>
             <tr><td>Cmd/Ctrl + F</td><td>Search nodes</td></tr>
+            <tr><td>Ctrl + H / Cmd + Shift + H</td><td>Find &amp; Replace</td></tr>
             <tr><td>Cmd/Ctrl + O</td><td>Open file…</td></tr>
             <tr><td>Cmd/Ctrl + S</td><td>Save</td></tr>
             <tr><td>Cmd/Ctrl + Shift + S</td><td>Save As…</td></tr>
@@ -3734,9 +3835,14 @@ function renderPanel() {
       <div class="empty-state">
         <p>Nothing selected.</p>
         <p>Click a node-type button above to add a node, drag empty canvas to marquee-select, or click an existing node or edge to edit it.</p>
+        <p style="margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border);">
+          Or — <button type="button" class="link-btn" id="empty-state-ai">🤖 generate a flow with AI ✨</button>
+        </p>
         <p style="margin-top:14px;"><strong>Nodes:</strong> ${state.nodes.length}<br><strong>Connections:</strong> ${state.edges.length}</p>
       </div>
     `;
+    const aiLink = document.getElementById('empty-state-ai');
+    if (aiLink) aiLink.addEventListener('click', openAiModal);
     return;
   }
 
@@ -4351,6 +4457,232 @@ document.getElementById('zoom-display').addEventListener('click', () => setZoom(
 document.getElementById('fit-content-btn').addEventListener('click', () => fitToContent());
 document.getElementById('auto-layout-btn').addEventListener('click', () => autoLayout());
 document.getElementById('add-frame-btn').addEventListener('click', () => addFrame());
+
+// ---------- Generate with AI ----------
+const LLM_SCHEMA_PROMPT = `You're generating a .flowspec.json file for FlowSpec — a visual flowchart app. Output only the JSON, no commentary.
+
+## File format
+
+\`\`\`json
+{
+  "_format": "flowspec.v1",
+  "title": "string",
+  "nextId": 12,
+  "nodes": [
+    {
+      "id": "node_1",
+      "type": "start | process | decision | end | folder | data | screen | note",
+      "label": "Short label (use \\\\n for line breaks)",
+      "description": "Optional longer text shown on the node and in the Spec output",
+      "x": 240, "y": 100,
+      "size": "S | M | L",
+      "color": "#hex (optional override; type usually picks a sensible color)"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge_1",
+      "source": "node_1",
+      "target": "node_2",
+      "label": "yes / no / etc — useful for decision branches",
+      "style": "solid | dashed | dotted",
+      "color": "#hex",
+      "waypoints": [{"x": 160, "y": 180}]
+    }
+  ],
+  "frames": [
+    {
+      "id": "frame_1",
+      "title": "Auth subsystem",
+      "x": 100, "y": 50,
+      "w": 320, "h": 220,
+      "color": "#hex"
+    }
+  ]
+}
+\`\`\`
+
+## Node types
+
+- **start / end** — pill-shaped entry / exit points. Multiple ends are fine (success, error, etc).
+- **process** — generic rectangle. A step or action.
+- **decision** — diamond. Always label outgoing edges (yes/no, if cached, success/fail, etc).
+- **folder + data** — for file structures. Folder = directory, Data = file. Connect parent folders to children.
+- **screen** — for app UI / page navigation flows.
+- **note** — side commentary, not part of the main flow.
+
+## Layout rules
+
+- \`x\` and \`y\` are the CENTER of the node, in world pixels.
+- Snap coordinates to multiples of 10.
+- Recommended spacing: ~200px horizontal between siblings, ~140px vertical between layers.
+- Start at the top. Decisions branch outward. End at the bottom.
+- Every node needs a unique id (\`node_1\`, \`node_2\`, …). Edges \`edge_1\`, \`edge_2\`. Frames \`frame_1\`.
+- \`nextId\` must be greater than the largest number you used.
+
+## Validation rules (try to satisfy these)
+
+- Decision nodes should have at least 2 outgoing edges, all labeled.
+- Non-end nodes shouldn't be dead-ends — give them an outgoing edge or change to type "end".
+- Every node should have a non-empty label.
+
+## Output
+
+- Emit ONLY the JSON. No prose, no explanation.
+- Wrapping in \\\`\\\`\\\`json fences is fine — the app strips them.
+`;
+
+function buildLlmPrompt(includeCurrent) {
+  let prompt = LLM_SCHEMA_PROMPT;
+  if (includeCurrent && state.nodes.length > 0) {
+    const current = serializeProject();
+    // Strip suppressedIssues + _format from the example to keep the prompt tight
+    delete current.suppressedIssues;
+    delete current._format;
+    prompt += '\n## Current flow (extend or modify this)\n\n```json\n' + JSON.stringify(current, null, 2) + '\n```\n';
+  }
+  prompt += '\n## Your task\n\nBuild a flowspec.json for:\n\n[describe what you want]\n';
+  return prompt;
+}
+
+function parseLlmResponse(text) {
+  if (!text || !text.trim()) throw new Error('Nothing to load — paste the LLM\'s response above.');
+  let t = text.trim();
+  // Strip leading/trailing markdown code fences if present
+  t = t.replace(/^```(?:json|JSON)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+  // First try direct parse
+  try {
+    const obj = JSON.parse(t);
+    if (!obj || typeof obj !== 'object') throw new Error('not an object');
+    if (!Array.isArray(obj.nodes)) throw new Error('Missing "nodes" array');
+    return obj;
+  } catch(e1) {
+    // Try to extract the first balanced JSON object from the text
+    const start = t.indexOf('{');
+    if (start === -1) throw new Error('No JSON object found in the response.');
+    let depth = 0, inStr = false, esc = false, end = -1;
+    for (let i = start; i < t.length; i++) {
+      const ch = t[i];
+      if (esc) { esc = false; continue; }
+      if (inStr) {
+        if (ch === '\\') esc = true;
+        else if (ch === '"') inStr = false;
+        continue;
+      }
+      if (ch === '"') { inStr = true; continue; }
+      if (ch === '{') depth++;
+      else if (ch === '}') {
+        depth--;
+        if (depth === 0) { end = i; break; }
+      }
+    }
+    if (end === -1) throw new Error('Could not find the end of the JSON object.');
+    const slice = t.slice(start, end + 1);
+    const obj = JSON.parse(slice);
+    if (!Array.isArray(obj.nodes)) throw new Error('Parsed JSON has no "nodes" array.');
+    return obj;
+  }
+}
+
+function openAiModal() {
+  document.getElementById('ai-modal').classList.add('open');
+  // Reset response field each open, refresh prompt with current settings
+  document.getElementById('ai-load-status').textContent = '';
+  document.getElementById('ai-copy-status').textContent = '';
+  refreshAiPrompt();
+}
+function closeAiModal() {
+  document.getElementById('ai-modal').classList.remove('open');
+}
+function refreshAiPrompt() {
+  const includeCurrent = document.getElementById('ai-include-current').checked;
+  document.getElementById('ai-prompt-text').value = buildLlmPrompt(includeCurrent);
+  const n = state.nodes.length;
+  const summary = n === 0 ? '(empty)' : `(${n} node${n===1?'':'s'}, ${state.edges.length} connection${state.edges.length===1?'':'s'})`;
+  document.getElementById('ai-current-summary').textContent = summary;
+}
+
+async function aiCopyPrompt() {
+  const text = document.getElementById('ai-prompt-text').value;
+  try {
+    await navigator.clipboard.writeText(text);
+    const el = document.getElementById('ai-copy-status');
+    el.textContent = '✓ Copied to clipboard';
+    setTimeout(() => { el.textContent = ''; }, 2400);
+  } catch(e) {
+    document.getElementById('ai-copy-status').textContent = 'Copy failed — select & copy manually.';
+  }
+}
+function aiSavePrompt() {
+  const text = document.getElementById('ai-prompt-text').value;
+  const blob = new Blob([text], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = sanitizeForFilename(state.title || 'flowspec') + '-prompt.txt';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+async function aiLoadResponse() {
+  const text = document.getElementById('ai-response-text').value;
+  const statusEl = document.getElementById('ai-load-status');
+  statusEl.style.color = 'var(--text-muted)';
+  statusEl.textContent = '';
+  let data;
+  try {
+    data = parseLlmResponse(text);
+  } catch(e) {
+    statusEl.style.color = 'var(--danger-text)';
+    statusEl.textContent = '❌ ' + e.message;
+    return;
+  }
+  const replaceCurrent = document.getElementById('ai-replace-current').checked;
+  // Normalize nextId so future ids don't collide with imported ones
+  let maxId = 0;
+  for (const arr of [data.nodes || [], data.edges || [], data.frames || []]) {
+    for (const item of arr) {
+      const m = (item.id || '').match(/_(\d+)$/);
+      if (m) maxId = Math.max(maxId, parseInt(m[1], 10));
+    }
+  }
+  if (!data.nextId || data.nextId <= maxId) data.nextId = maxId + 1;
+
+  if (replaceCurrent) {
+    snapshot();
+    state.title = data.title || state.title || 'Imported from AI';
+    state.nodes = data.nodes || [];
+    state.edges = data.edges || [];
+    state.frames = data.frames || [];
+    state.nextId = data.nextId;
+    state.pan = { x: 0, y: 0 };
+    state.zoom = 1;
+    document.getElementById('title-input').value = state.title;
+    // If positions look like all zeros (LLM skipped them), auto-layout
+    const allZero = state.nodes.length > 0 && state.nodes.every(n => (!n.x || n.x === 0) && (!n.y || n.y === 0));
+    save();
+    if (allZero) autoLayout();
+    else fitToContent();
+    render();
+  } else {
+    await applyOpenedFile(data, (data.title || 'AI generated') + '.flowspec.json', null);
+    const allZero = state.nodes.length > 0 && state.nodes.every(n => (!n.x || n.x === 0) && (!n.y || n.y === 0));
+    if (allZero) autoLayout();
+    else fitToContent();
+  }
+  statusEl.style.color = 'var(--accent)';
+  statusEl.textContent = `✓ Loaded ${data.nodes.length} node${data.nodes.length===1?'':'s'} and ${(data.edges||[]).length} connection${(data.edges||[]).length===1?'':'s'}.`;
+  // Auto-close after a moment so the user can verify the status, then see their flow
+  setTimeout(() => closeAiModal(), 900);
+}
+
+document.getElementById('ai-close').addEventListener('click', closeAiModal);
+document.getElementById('ai-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'ai-modal') closeAiModal();
+});
+document.getElementById('ai-include-current').addEventListener('change', refreshAiPrompt);
+document.getElementById('ai-copy-btn').addEventListener('click', aiCopyPrompt);
+document.getElementById('ai-save-prompt-btn').addEventListener('click', aiSavePrompt);
+document.getElementById('ai-load-btn').addEventListener('click', aiLoadResponse);
 
 // ---------- Find & Replace ----------
 function openFindReplace() {
@@ -5508,6 +5840,7 @@ document.querySelectorAll('#more-menu .dropdown-item').forEach(item => {
       case 'export-json': exportJsonCopy(); break;
       case 'export-png': exportPng(); break;
       case 'find-replace': openFindReplace(); break;
+      case 'ai': openAiModal(); break;
     }
   });
 });

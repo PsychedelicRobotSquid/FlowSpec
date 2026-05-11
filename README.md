@@ -20,7 +20,9 @@ Most diagramming tools (Excalidraw, draw.io, Whimsical) export images or proprie
 
 ### Editor
 - **8 node types** — Start, Process, Decision, End, Folder, File/Data, Screen, Note — each with distinct shapes and colors
-- **Per-node sizing** (Small / Medium / Large), labels (multi-line), and descriptions
+- **Per-node sizing** (Small / Medium / Large), labels (multi-line), descriptions, and custom color overrides
+- **Edge styling** — solid / dashed / dotted, custom color, waypoints to bend connections
+- **Frames / groups** — labeled containers around a set of nodes; drag a frame to move it and everything inside
 - **Drag-to-connect** — drag from handles on a selected node to any other node
 - **Multi-select** — marquee drag or Shift-click, with align + distribute tools
 - **Copy / cut / paste / duplicate** (Cmd/Ctrl + C / X / V / D), works across projects
@@ -30,6 +32,8 @@ Most diagramming tools (Excalidraw, draw.io, Whimsical) export images or proprie
 - **Auto-layout** (`▦ Tidy` or `L`) — one-click top-down layered arrangement
 - **Right-click / long-press** context menus on nodes, edges, and the canvas
 - **Search** (Cmd/Ctrl + F) — find nodes by label or description
+- **Find & Replace** (Ctrl + H / Cmd + Shift + H) — bulk edit labels, descriptions, or edge labels
+- **Flow validation** — flags unlabeled decisions, dead-ends, orphans, unreachable nodes. Suppress individual warnings if a structure is intentional
 
 ### Canvas
 - **Pan** — hold Space + drag (or one-finger drag on touch)
@@ -57,6 +61,10 @@ Most diagramming tools (Excalidraw, draw.io, Whimsical) export images or proprie
 - **Mobile-friendly** — pointer events, pinch + two-finger pan, responsive layout with a compact 1-row header and bottom-drawer side panel
 - **Keyboard-first** — everything has a shortcut
 - **Selection glow** so the active node is unmistakable in dark mode
+- **Onboarding tour** for first-time visitors, replayable from the Help tab
+
+### Generate with AI
+Open the `⋮ More` menu → **🤖 Generate with AI…** to bring up the prompt builder. It hands you a ready-to-paste prompt that contains FlowSpec's full schema + layout rules. Drop it into any LLM (ChatGPT, Claude, Gemini, etc.), describe what you want, paste the JSON back, click Load. No file save / load step needed. Optionally include your current flow so the model can extend or refactor it.
 
 ### Zero dependencies
 Pure HTML, CSS, vanilla JavaScript. Single file. Works offline. No tracking, no analytics, no network calls.
@@ -102,6 +110,7 @@ The **Spec tab's** JSON format is intentionally minimal (just `id` / `type` / `l
 | `Cmd/Ctrl` + `D` | Duplicate |
 | `Cmd/Ctrl` + `Z` / `Shift+Z` | Undo / Redo |
 | `Cmd/Ctrl` + `F` | Search nodes |
+| `Ctrl` + `H` / `Cmd` + `Shift` + `H` | Find & Replace |
 | `Cmd/Ctrl` + `O` | Open file… |
 | `Cmd/Ctrl` + `S` / `Shift+S` | Save / Save As… |
 
