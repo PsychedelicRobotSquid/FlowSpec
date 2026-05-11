@@ -2,6 +2,12 @@
 
 All notable changes to FlowSpec. Format roughly follows [Keep a Changelog](https://keepachangelog.com/). Versioning is loose pre-1.0 — minor bumps for feature batches, patch bumps for fixes.
 
+## [0.15.4] — 2026-05-11
+
+### Changed
+- **Selection highlight is now white in dark mode** (was the pastel green accent) — matches the dark-on-light feel of the light theme where selection is dark gray on a light background. Added a separate `--selection` CSS variable so the brand accent color (used for primary buttons + the dirty indicator + link text) stays the same
+- Applies to: selected node stroke + glow, selected edge line + arrow, frame selection glow, frame resize corners, drag-to-connect handles, edge waypoint markers, alignment guides during drag, marquee rectangle, and connect-drag preview line
+
 ## [0.15.3] — 2026-05-11
 
 ### Fixed

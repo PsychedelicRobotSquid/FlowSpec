@@ -29,7 +29,7 @@ Most diagramming tools (Excalidraw, draw.io, Whimsical) export images or proprie
 - **Undo / redo** (Cmd/Ctrl + Z) — up to 50 steps
 - **Quick-add hotkeys** — press 1–8 to add a node of that type
 - **Alignment guides** — dashed snap lines appear when you drag a node near another's edges or center
-- **Auto-layout** (`▦ Tidy` or `L`) — one-click top-down layered arrangement
+- **Tidy** (`▦` or `L`) — overlap resolution that pushes nodes / frames apart by the minimum needed. Idempotent, scoped to selection if any, frames move as units and grow to contain their children
 - **Right-click / long-press** context menus on nodes, edges, and the canvas
 - **Search** (Cmd/Ctrl + F) — find nodes by label or description
 - **Find & Replace** (Ctrl + H / Cmd + Shift + H) — bulk edit labels, descriptions, or edge labels
@@ -37,9 +37,10 @@ Most diagramming tools (Excalidraw, draw.io, Whimsical) export images or proprie
 
 ### Canvas
 - **Pan** — hold Space + drag (or one-finger drag on touch)
-- **Zoom** — hold Z + scroll, Ctrl + scroll, or pinch on a trackpad / touchscreen
+- **Zoom** — hold Z + scroll, Ctrl + scroll, or pinch on a trackpad / touchscreen. 5% – 300%
 - **Fit-to-content** (`⊡` or `F`) and Reset view (`⊙`)
-- **Fullscreen** mode (`⛶`) hides all chrome; floating Add menu stays accessible
+- **Fullscreen** mode (`⛶`) hides the header + top toolbar; the floating canvas toolbar (`+ Add ▾ / ⊡ / ⊙ / ▦ / ⛶`) stays at the top-left so common actions are always one click away
+- **Faint origin marker** at world (0, 0) — visible always at low opacity so Reset is predictable
 
 ### Files
 - Each project can be **linked to a `.flowspec.json` file on disk** — Open, Save, Save As behave like a real document editor (Cmd/Ctrl + O / S / Shift+S)
@@ -124,9 +125,10 @@ The **Spec tab's** JSON format is intentionally minimal (just `id` / `type` / `l
 | 1-finger drag on canvas | Pan |
 | 1-finger drag on a node | Move the node |
 | Tap a node / edge | Select |
+| Tap empty canvas | Deselect |
 | 2-finger pinch | Zoom |
 | 2-finger drag | Pan + zoom together |
-| Long-press (½ sec) | Open context menu |
+| Long-press (½ sec) | Open context menu (includes **Select region…** to draw a marquee with one finger) |
 
 ---
 
@@ -166,10 +168,11 @@ The app is one HTML file, so anywhere that hosts static files works.
 
 ## Tech notes
 
-- Single HTML file, ~3000 lines including CSS and JS
+- Single HTML file, ~6000 lines including CSS and JS
 - SVG-based canvas; positions stored as world coordinates with separate pan/zoom
 - Auto-saves to `localStorage` under `flowspec.workspace.v1`; per-project file handles in IndexedDB
 - Pointer Events throughout — one input model for mouse, touch, stylus
+- Theme via CSS variables — separate `--selection` color so the highlight reads cleanly on both light and dark backgrounds
 
 ---
 

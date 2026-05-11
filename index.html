@@ -26,6 +26,7 @@
     --border-light: #2c2c2a;
     --accent:       #c0dd97;
     --accent-text:  #1a1a18;
+    --selection:    #ffffff;
     --canvas-bg:    #1f1f1d;
     --canvas-dot:   #33332f;
     --field-bg:     #2c2c2a;
@@ -57,6 +58,7 @@
     --border-light: #d3d1c7;
     --accent:       #2c2c2a;
     --accent-text:  #ffffff;
+    --selection:    #2c2c2a;
     --canvas-bg:    #fafaf7;
     --canvas-dot:   #e0ddd2;
     --field-bg:     #fafaf7;
@@ -254,7 +256,7 @@
   #canvas.zooming { cursor: zoom-in; }
   .marquee-rect {
     fill: rgba(192, 221, 151, 0.10);
-    stroke: var(--accent);
+    stroke: var(--selection);
     stroke-width: 1;
     stroke-dasharray: 4 3;
     pointer-events: none;
@@ -590,11 +592,11 @@
   .node-group { cursor: grab; }
   .node-group:active { cursor: grabbing; }
   .node-group.selected .node-shape {
-    stroke: var(--accent); stroke-width: 3;
-    filter: drop-shadow(0 0 6px var(--accent));
+    stroke: var(--selection); stroke-width: 3;
+    filter: drop-shadow(0 0 6px var(--selection));
   }
   [data-theme="dark"] .node-group.selected .node-shape {
-    filter: drop-shadow(0 0 10px var(--accent)) drop-shadow(0 0 3px var(--accent));
+    filter: drop-shadow(0 0 10px var(--selection)) drop-shadow(0 0 3px var(--selection));
   }
   .node-group.connect-source .node-shape {
     stroke: #5fa5f4; stroke-width: 2.5;
@@ -790,12 +792,12 @@
     user-select: none;
   }
   .edge-line { fill: none; stroke: var(--text-faint); stroke-width: 1.5; }
-  .edge-line.selected { stroke: var(--accent); stroke-width: 2.5; }
+  .edge-line.selected { stroke: var(--selection); stroke-width: 2.5; }
   .arrow-fill { fill: var(--text-faint); }
-  .arrow-fill-sel { fill: var(--accent); }
+  .arrow-fill-sel { fill: var(--selection); }
   .edge-hit { fill: none; stroke: transparent; stroke-width: 12; cursor: pointer; }
   .connect-handle {
-    fill: var(--accent);
+    fill: var(--selection);
     stroke: var(--bg);
     stroke-width: 2;
     cursor: crosshair;
@@ -803,7 +805,7 @@
   .connect-handle:hover { r: 8; }
   .waypoint-handle {
     fill: var(--surface);
-    stroke: var(--accent);
+    stroke: var(--selection);
     stroke-width: 2;
     cursor: move;
   }
@@ -813,11 +815,11 @@
     .connect-handle { r: 9; }
   }
   .connect-preview {
-    fill: none; stroke: var(--accent); stroke-width: 2;
+    fill: none; stroke: var(--selection); stroke-width: 2;
     stroke-dasharray: 5 4; pointer-events: none;
   }
   .align-guide {
-    stroke: var(--accent); stroke-width: 1;
+    stroke: var(--selection); stroke-width: 1;
     stroke-dasharray: 4 4;
     opacity: 0.7; pointer-events: none;
   }
@@ -826,7 +828,7 @@
     cursor: move;
   }
   .frame-rect.selected {
-    filter: drop-shadow(0 0 6px var(--accent));
+    filter: drop-shadow(0 0 6px var(--selection));
   }
   .frame-title {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -836,7 +838,7 @@
     user-select: none;
   }
   .frame-corner {
-    fill: var(--accent);
+    fill: var(--selection);
     stroke: var(--bg);
     stroke-width: 1.5;
     cursor: nwse-resize;
@@ -1330,7 +1332,7 @@
 // =============================================================
 // FlowSpec — visual flowchart builder with LLM-friendly text out
 // =============================================================
-const FLOWSPEC_VERSION = '0.15.3';
+const FLOWSPEC_VERSION = '0.15.4';
 
 const NODE_TYPES = {
   start:    { label: 'Start',    color: '#c0dd97', stroke: '#3b6d11', text: '#173404', shape: 'pill',    hint: 'Where the flow begins. Typically one per chart.' },
