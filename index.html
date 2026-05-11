@@ -152,6 +152,9 @@
     border-radius: 6px; box-shadow: var(--shadow);
     min-width: 220px; padding: 4px;
     z-index: 50; display: none;
+    max-height: 65dvh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
   .dropdown.open .dropdown-menu { display: block; }
   .dropdown-item {
@@ -622,6 +625,46 @@
     padding: 24px 16px; text-align: center;
     color: var(--text-faint); font-size: 13px;
   }
+  .issues-section-head {
+    padding: 8px 12px 4px;
+    font-size: 11px; font-weight: 500; color: var(--text-faint);
+    text-transform: uppercase; letter-spacing: 0.05em;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .issues-section-head .issues-clear-supp {
+    margin-left: auto;
+    background: none; border: 1px solid var(--border);
+    color: var(--text-muted); cursor: pointer;
+    padding: 2px 8px; font-size: 10px;
+    border-radius: 4px; font-family: inherit;
+    text-transform: none; letter-spacing: 0;
+  }
+  .issues-section-head .issues-clear-supp:hover {
+    color: var(--text); background: var(--hover-bg);
+  }
+  .issue-row .issue-suppress,
+  .issue-row .issue-unsuppress {
+    flex: 0 0 auto;
+    background: none; border: 1px solid transparent;
+    color: var(--text-faint); cursor: pointer;
+    padding: 0 8px; font-size: 14px;
+    line-height: 1; border-radius: 4px;
+    font-family: inherit;
+    align-self: center;
+  }
+  .issue-row .issue-suppress:hover,
+  .issue-row .issue-unsuppress:hover {
+    color: var(--text); background: var(--hover-bg); border-color: var(--border);
+  }
+  .issue-row.suppressed {
+    opacity: 0.55;
+  }
+  .issue-row.suppressed:hover { opacity: 0.85; }
+  .issue-row.suppressed.orphaned {
+    opacity: 0.45;
+    cursor: default;
+  }
+  .issue-row.suppressed.orphaned:hover { background: transparent; opacity: 0.45; }
   /* Onboarding tour */
   .tour-overlay {
     position: fixed; inset: 0;
@@ -1198,7 +1241,9 @@ const state = {
   currentProjectId: null,
   panelCollapsed: false,
   searchHits: new Set(),  // node ids matching active search
-  issues: [],              // [{ nodeId, severity, message }] from validateFlow()
+  issues: [],              // ACTIVE issues from validateFlow() (after suppression)
+  suppressedIssuesView: [], // currently-flagged issues that the user has chosen to suppress
+  suppressedIssues: new Set(), // Set<fingerprint> of suppressed issue fingerprints
   dirty: false,            // in-memory state differs from last saved file (or no file)
   loading: false,          // true while bulk-loading a project (suppresses dirty)
   connectDrag: null,       // { sourceId, currentWorldX, currentWorldY, hoverTargetId } when dragging a handle
@@ -1267,6 +1312,7 @@ function save() {
     hasLink: prev ? !!prev.hasLink : false,
     linkName: prev ? (prev.linkName || null) : null,
     dirty: state.dirty,
+    suppressedIssues: Array.from(state.suppressedIssues),
   };
   saveWorkspace(ws);
   // save() is called after every mutation — mark dirty unless we're currently mid-load
@@ -1287,6 +1333,7 @@ function load() {
   state.frames = p.frames || [];
   state.nextId = p.nextId || 1;
   state.dirty = !!p.dirty;
+  state.suppressedIssues = new Set(p.suppressedIssues || []);
   return true;
 }
 
@@ -1298,6 +1345,7 @@ function serialize() {
     edges: JSON.parse(JSON.stringify(state.edges)),
     frames: JSON.parse(JSON.stringify(state.frames)),
     nextId: state.nextId,
+    suppressedIssues: Array.from(state.suppressedIssues),
   };
 }
 function deserialize(s) {
@@ -1306,6 +1354,7 @@ function deserialize(s) {
   state.edges = JSON.parse(JSON.stringify(s.edges || []));
   state.frames = JSON.parse(JSON.stringify(s.frames || []));
   state.nextId = s.nextId;
+  state.suppressedIssues = new Set(s.suppressedIssues || []);
   // Drop selections that may reference removed items
   state.selectedNodeIds.clear();
   state.selectedEdgeId = null;
@@ -3225,20 +3274,60 @@ function highestSeverity(issues) {
   return 'info';
 }
 
+function issueFingerprint(issue) {
+  return `${issue.nodeId || 'flow'}|${issue.severity}|${issue.message}`;
+}
+
+function suppressIssue(issue) {
+  state.suppressedIssues.add(issueFingerprint(issue));
+  save();
+  render();
+}
+function unsuppressIssue(fp) {
+  state.suppressedIssues.delete(fp);
+  save();
+  render();
+}
+function clearAllSuppressions() {
+  state.suppressedIssues.clear();
+  save();
+  render();
+}
+
 function updateIssuesUI() {
-  state.issues = validateFlow();
+  const all = validateFlow();
+  // Split into active (visible) and currently-flagged-but-suppressed
+  const active = [];
+  const suppressed = [];
+  for (const iss of all) {
+    if (state.suppressedIssues.has(issueFingerprint(iss))) suppressed.push(iss);
+    else active.push(iss);
+  }
+  state.issues = active;
+  state.suppressedIssuesView = suppressed;
+
   const btn = document.getElementById('issues-btn');
-  if (btn) {
-    const total = state.issues.length;
-    if (total === 0) {
-      btn.style.display = 'none';
-    } else {
-      btn.style.display = '';
-      const sev = highestSeverity(state.issues);
-      btn.textContent = `⚠ ${total}`;
-      btn.dataset.severity = sev;
-      btn.title = `${total} issue${total===1?'':'s'} (click to view)`;
-    }
+  if (!btn) return;
+  const activeN = active.length;
+  const suppN = suppressed.length;
+  // Keep button visible whenever ANY suppressions exist so the user can manage them
+  const orphanedSuppressed = state.suppressedIssues.size - suppN;
+  if (activeN === 0 && suppN === 0 && orphanedSuppressed === 0) {
+    btn.style.display = 'none';
+    return;
+  }
+  btn.style.display = '';
+  if (activeN > 0) {
+    const sev = highestSeverity(active);
+    btn.dataset.severity = sev;
+    btn.textContent = `⚠ ${activeN}${suppN > 0 ? ` (+${suppN})` : ''}`;
+    btn.title = suppN > 0
+      ? `${activeN} active issue${activeN===1?'':'s'}, ${suppN} suppressed (click to manage)`
+      : `${activeN} issue${activeN===1?'':'s'} (click to view)`;
+  } else {
+    btn.dataset.severity = 'info';
+    btn.textContent = `⚠ ${suppN || state.suppressedIssues.size}`;
+    btn.title = `Suppressed issues — click to manage`;
   }
 }
 
@@ -4396,34 +4485,101 @@ document.getElementById('fr-replace').addEventListener('keydown', (ev) => {
 function renderIssuesPanel() {
   const body = document.getElementById('issues-body');
   if (!body) return;
-  if (state.issues.length === 0) {
-    body.innerHTML = '<div class="issues-empty">No issues detected.</div>';
+  const order = { error: 0, warning: 1, info: 2 };
+
+  const active = [...state.issues].sort((a, b) => order[a.severity] - order[b.severity]);
+  const suppressed = [...(state.suppressedIssuesView || [])].sort((a, b) => order[a.severity] - order[b.severity]);
+
+  // Suppressed fingerprints that aren't in the current flagged set ("orphaned")
+  // — they correspond to issues that have since been fixed in the flow.
+  const flaggedFps = new Set([...active, ...suppressed].map(issueFingerprint));
+  const orphanedFps = [...state.suppressedIssues].filter(fp => !flaggedFps.has(fp));
+
+  if (active.length === 0 && suppressed.length === 0 && orphanedFps.length === 0) {
+    body.innerHTML = '<div class="issues-empty">No issues detected. ✨</div>';
     return;
   }
-  // Sort: errors first, warnings next, info last
-  const order = { error: 0, warning: 1, info: 2 };
-  const sorted = [...state.issues].sort((a, b) => order[a.severity] - order[b.severity]);
-  body.innerHTML = sorted.map((iss, idx) => {
+
+  function renderActiveRow(iss, idx) {
     const node = iss.nodeId ? state.nodes.find(n => n.id === iss.nodeId) : null;
     const name = node ? (node.label || '(untitled)') : 'Flow';
+    const sevChar = iss.severity === 'info' ? 'i' : '!';
     return `
-      <div class="issue-row" data-idx="${idx}">
-        <div class="sev ${iss.severity}">${iss.severity === 'error' ? '!' : iss.severity === 'warning' ? '!' : 'i'}</div>
+      <div class="issue-row" data-active-idx="${idx}">
+        <div class="sev ${iss.severity}">${sevChar}</div>
         <div class="text">
           <div class="nodename">${escapeHtml(name)}</div>
           <div class="msg">${escapeHtml(iss.message)}</div>
         </div>
+        <button class="issue-suppress" data-suppress-idx="${idx}" title="Suppress this issue">×</button>
       </div>
     `;
-  }).join('');
+  }
+  function renderSuppressedRow(iss, idx) {
+    const node = iss.nodeId ? state.nodes.find(n => n.id === iss.nodeId) : null;
+    const name = node ? (node.label || '(untitled)') : 'Flow';
+    const sevChar = iss.severity === 'info' ? 'i' : '!';
+    return `
+      <div class="issue-row suppressed" data-supp-idx="${idx}">
+        <div class="sev ${iss.severity}">${sevChar}</div>
+        <div class="text">
+          <div class="nodename">${escapeHtml(name)}</div>
+          <div class="msg">${escapeHtml(iss.message)}</div>
+        </div>
+        <button class="issue-unsuppress" data-unsuppress-fp="${escapeHtml(issueFingerprint(iss))}" title="Stop suppressing — show again">↺</button>
+      </div>
+    `;
+  }
+  function renderOrphanedRow(fp, idx) {
+    // Parse fingerprint: nodeId|severity|message
+    const parts = fp.split('|');
+    const nodeId = parts[0];
+    const severity = parts[1];
+    const message = parts.slice(2).join('|');
+    const node = nodeId && nodeId !== 'flow' ? state.nodes.find(n => n.id === nodeId) : null;
+    const name = node ? (node.label || '(untitled)') : (nodeId === 'flow' ? 'Flow' : 'Removed node');
+    const sevChar = severity === 'info' ? 'i' : '!';
+    return `
+      <div class="issue-row suppressed orphaned" data-orph-idx="${idx}">
+        <div class="sev ${severity || 'info'}">${sevChar}</div>
+        <div class="text">
+          <div class="nodename">${escapeHtml(name)} <span style="color:var(--text-faint); font-weight:400;">(no longer flagged)</span></div>
+          <div class="msg">${escapeHtml(message)}</div>
+        </div>
+        <button class="issue-unsuppress" data-unsuppress-fp="${escapeHtml(fp)}" title="Forget suppression">↺</button>
+      </div>
+    `;
+  }
+
+  let html = '';
+  if (active.length > 0) {
+    html += `<div class="issues-section-head">Active · ${active.length}</div>`;
+    html += active.map(renderActiveRow).join('');
+  }
+  if (suppressed.length > 0 || orphanedFps.length > 0) {
+    const totalSupp = suppressed.length + orphanedFps.length;
+    html += `<div class="issues-section-head">Suppressed · ${totalSupp}
+      <button class="issues-clear-supp" id="issues-clear-supp" title="Clear all suppressions">Clear all</button>
+    </div>`;
+    html += suppressed.map(renderSuppressedRow).join('');
+    html += orphanedFps.map(renderOrphanedRow).join('');
+  } else if (active.length === 0) {
+    html += '<div class="issues-empty">No issues detected. ✨</div>';
+  }
+  body.innerHTML = html;
+
+  // Wire interactions
   body.querySelectorAll('.issue-row').forEach(row => {
-    row.addEventListener('click', () => {
-      const idx = parseInt(row.dataset.idx, 10);
-      const iss = sorted[idx];
+    row.addEventListener('click', (ev) => {
+      // Suppress / unsuppress button clicks shouldn't navigate
+      if (ev.target.closest('.issue-suppress') || ev.target.closest('.issue-unsuppress')) return;
+      let iss = null;
+      if (row.dataset.activeIdx !== undefined) iss = active[parseInt(row.dataset.activeIdx, 10)];
+      else if (row.dataset.suppIdx !== undefined) iss = suppressed[parseInt(row.dataset.suppIdx, 10)];
+      // Orphaned rows have no associated current node — clicking does nothing
       if (iss && iss.nodeId) {
         const node = state.nodes.find(n => n.id === iss.nodeId);
         if (!node) return;
-        // Center view on the node + select it
         const rect = svg.getBoundingClientRect();
         state.pan.x = rect.width / 2 - node.x * state.zoom;
         state.pan.y = rect.height / 2 - node.y * state.zoom;
@@ -4435,6 +4591,23 @@ function renderIssuesPanel() {
       }
     });
   });
+  body.querySelectorAll('.issue-suppress').forEach(btn => {
+    btn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const idx = parseInt(btn.dataset.suppressIdx, 10);
+      const iss = active[idx];
+      if (iss) suppressIssue(iss);
+    });
+  });
+  body.querySelectorAll('.issue-unsuppress').forEach(btn => {
+    btn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const fp = btn.dataset.unsuppressFp;
+      if (fp) unsuppressIssue(fp);
+    });
+  });
+  const clearBtn = document.getElementById('issues-clear-supp');
+  if (clearBtn) clearBtn.addEventListener('click', clearAllSuppressions);
 }
 function openIssuesPanel() {
   renderIssuesPanel();
@@ -4589,6 +4762,7 @@ const TEMPLATES = {
         { id: 'node_3', type: 'screen',   label: 'Show login',         description: '', x: 80, y: 400 },
         { id: 'node_4', type: 'screen',   label: 'Show dashboard',     description: 'Main app UI', x: 400, y: 400 },
         { id: 'node_5', type: 'process',  label: 'Authenticate',       description: 'POST /auth, store token', x: 80, y: 540 },
+        { id: 'node_6', type: 'end',      label: 'Ready',              description: 'User is authed and in the app', x: 400, y: 680 },
       ],
       edges: [
         { id: 'edge_1', source: 'node_1', target: 'node_2', label: '' },
@@ -4596,8 +4770,9 @@ const TEMPLATES = {
         { id: 'edge_3', source: 'node_2', target: 'node_3', label: 'no' },
         { id: 'edge_4', source: 'node_3', target: 'node_5', label: 'submit' },
         { id: 'edge_5', source: 'node_5', target: 'node_4', label: '' },
+        { id: 'edge_6', source: 'node_4', target: 'node_6', label: '' },
       ],
-      nextId: 10,
+      nextId: 12,
     },
   },
   pipeline: {
@@ -4610,8 +4785,9 @@ const TEMPLATES = {
         { id: 'node_2', type: 'decision',label: 'Valid?',       description: 'Schema + range checks',  x: 240, y: 240 },
         { id: 'node_3', type: 'process', label: 'Transform',    description: 'Normalize, enrich, dedupe', x: 240, y: 400 },
         { id: 'node_4', type: 'data',    label: 'Warehouse',    description: 'Append to dim/fact tables', x: 240, y: 540 },
-        { id: 'node_5', type: 'process', label: 'Reject',       description: 'Write to error queue',     x: 460, y: 240 },
+        { id: 'node_5', type: 'process', label: 'Reject',       description: 'Write to error queue',     x: 460, y: 400 },
         { id: 'node_6', type: 'end',     label: 'Available to query', description: '', x: 240, y: 680 },
+        { id: 'node_7', type: 'end',     label: 'Dropped',      description: 'Logged for manual review', x: 460, y: 540 },
       ],
       edges: [
         { id: 'edge_1', source: 'node_1', target: 'node_2', label: '' },
@@ -4619,8 +4795,9 @@ const TEMPLATES = {
         { id: 'edge_3', source: 'node_2', target: 'node_5', label: 'no' },
         { id: 'edge_4', source: 'node_3', target: 'node_4', label: '' },
         { id: 'edge_5', source: 'node_4', target: 'node_6', label: '' },
+        { id: 'edge_6', source: 'node_5', target: 'node_7', label: '' },
       ],
-      nextId: 10,
+      nextId: 12,
     },
   },
   fileTree: {
@@ -4735,6 +4912,7 @@ function newProject(templateKeyOrBool) {
     state.frames = [];
     state.nextId = 1;
   }
+  state.suppressedIssues = new Set();
   save();
   state.loading = false;
   state.dirty = false;
@@ -4756,6 +4934,7 @@ function switchProject(id) {
   state.edges = p.edges || [];
   state.frames = p.frames || [];
   state.nextId = p.nextId || 1;
+  state.suppressedIssues = new Set(p.suppressedIssues || []);
   state.pan = { x: 0, y: 0 };
   state.zoom = 1;
   state.undoStack = [];
@@ -4923,6 +5102,7 @@ function serializeProject() {
     edges: state.edges,
     frames: state.frames,
     nextId: state.nextId,
+    suppressedIssues: Array.from(state.suppressedIssues),
     _format: 'flowspec.v1',
   };
 }
@@ -5100,6 +5280,7 @@ async function applyOpenedFile(data, filename, fileHandle) {
   state.edges = data.edges || [];
   state.frames = data.frames || [];
   state.nextId = data.nextId || (state.nodes.length + state.edges.length + 1);
+  state.suppressedIssues = new Set(data.suppressedIssues || []);
   state.pan = { x: 0, y: 0 };
   state.zoom = 1;
   state.undoStack = [];
