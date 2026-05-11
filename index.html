@@ -164,6 +164,32 @@
   }
   .dropdown-item:hover { background: var(--hover-bg); }
 
+  /* Context menu (right-click / long-press) */
+  .context-menu {
+    position: fixed; z-index: 80;
+    display: none;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; box-shadow: var(--shadow);
+    min-width: 180px; padding: 4px;
+  }
+  .context-menu.open { display: block; }
+  .context-menu .ctx-item {
+    display: block; width: 100%; text-align: left;
+    padding: 7px 12px; font-size: 13px;
+    background: none; border: none;
+    color: var(--text); cursor: pointer;
+    border-radius: 4px; font-family: inherit;
+  }
+  .context-menu .ctx-item:hover { background: var(--hover-bg); }
+  .context-menu .ctx-item.danger { color: var(--danger-text); }
+  .context-menu .ctx-item.danger:hover { background: var(--danger-bg); }
+  .context-menu hr {
+    border: none; border-top: 1px solid var(--border); margin: 4px 0;
+  }
+  @media (pointer: coarse) {
+    .context-menu .ctx-item { padding: 10px 12px; min-height: 40px; }
+  }
+
   .btn {
     padding: 6px 12px;
     border: 1px solid var(--border-light); border-radius: 6px;
@@ -384,6 +410,14 @@
     outline: none; border-color: var(--text-faint); background: var(--field-bg-focus);
   }
   .field textarea { resize: vertical; min-height: 80px; line-height: 1.4; }
+  .field textarea.label-input {
+    resize: none;
+    min-height: 0;
+    line-height: 1.35;
+    font-weight: 500;
+    overflow: hidden;
+    field-sizing: content; /* native auto-grow where supported */
+  }
   .field .help { font-size: 11px; color: var(--text-faint); margin-top: 4px; line-height: 1.4; }
   .field .row { display: grid; gap: 6px; }
   .field .row.cols-2 { grid-template-columns: 1fr 1fr; }
@@ -443,6 +477,22 @@
   .arrow-fill { fill: var(--text-faint); }
   .arrow-fill-sel { fill: var(--accent); }
   .edge-hit { fill: none; stroke: transparent; stroke-width: 12; cursor: pointer; }
+  .connect-handle {
+    fill: var(--accent);
+    stroke: var(--bg);
+    stroke-width: 2;
+    cursor: crosshair;
+  }
+  .connect-handle:hover { r: 8; }
+  .connect-preview {
+    fill: none; stroke: var(--accent); stroke-width: 2;
+    stroke-dasharray: 5 4; pointer-events: none;
+  }
+  .align-guide {
+    stroke: var(--accent); stroke-width: 1;
+    stroke-dasharray: 4 4;
+    opacity: 0.7; pointer-events: none;
+  }
   @media (pointer: coarse) {
     .edge-hit { stroke-width: 22; }
   }
@@ -516,6 +566,22 @@
   }
   .floating-exit-fs:hover { background: rgba(0,0,0,0.7); }
   body.fullscreen .floating-exit-fs { display: inline-flex; align-items: center; gap: 4px; }
+  .floating-add-fs {
+    position: fixed; top: 8px; left: 8px;
+    z-index: 60;
+    display: none;
+  }
+  body.fullscreen .floating-add-fs { display: inline-block; }
+  .floating-add-btn {
+    background: rgba(0,0,0,0.55);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 6px;
+    padding: 6px 12px; font-size: 14px;
+    cursor: pointer; font-family: inherit;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  }
+  .floating-add-btn:hover { background: rgba(0,0,0,0.7); }
 
   /* Touch-friendly tap targets on coarse pointers (phones, tablets) */
   @media (pointer: coarse) {
@@ -660,6 +726,13 @@
   </div>
 </header>
 <button class="floating-exit-fs" id="exit-fullscreen-btn" title="Exit fullscreen">⛶ Exit</button>
+<div class="context-menu" id="context-menu"></div>
+<div class="floating-add-fs dropdown" id="floating-add-dropdown">
+  <button class="floating-add-btn" id="floating-add-btn" title="Add a node">+ Add</button>
+  <div class="dropdown-menu" id="floating-add-menu" style="left:0; right:auto; top:100%; margin-top:6px;">
+    <!-- Filled by JS -->
+  </div>
+</div>
 
 <div class="toolbar">
   <div class="group">
@@ -684,6 +757,7 @@
     <span class="zoom-display" id="zoom-display" title="Current zoom — click to reset to 100%">100%</span>
     <button class="btn icon" id="zoom-in-btn" title="Zoom in (Z + scroll, or Ctrl + scroll)">+</button>
     <button class="btn icon" id="fit-content-btn" title="Fit all nodes to view (F)">⊡<span class="btn-label"> Fit</span></button>
+    <button class="btn icon" id="auto-layout-btn" title="Auto-layout: tidy nodes into layers (L)">▦<span class="btn-label"> Tidy</span></button>
     <button class="btn icon" id="reset-view-btn" title="Reset zoom and pan">⊙<span class="btn-label"> Reset</span></button>
     <button class="btn danger icon" id="delete-btn" title="Delete selected (Del)" disabled>🗑<span class="btn-label"> Delete</span></button>
   </div>
@@ -753,7 +827,12 @@
     </div>
     <div class="modal-footer">
       <button class="btn" id="new-blank-btn">+ New (blank)</button>
-      <button class="btn primary" id="new-example-btn">+ New (with example)</button>
+      <div class="dropdown" id="new-template-dropdown">
+        <button class="btn primary" id="new-template-btn">+ From template ▾</button>
+        <div class="dropdown-menu" id="new-template-menu" style="right:0; left:auto; bottom:100%; top:auto; margin-bottom:6px;">
+          <!-- Filled by JS -->
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -804,6 +883,8 @@ const state = {
   searchHits: new Set(),  // node ids matching active search
   dirty: false,            // in-memory state differs from last saved file (or no file)
   loading: false,          // true while bulk-loading a project (suppresses dirty)
+  connectDrag: null,       // { sourceId, currentWorldX, currentWorldY, hoverTargetId } when dragging a handle
+  alignGuides: [],         // [{ type: 'v'|'h', value }] in world coords, visible during drag
 };
 
 function genId(prefix) {
@@ -944,10 +1025,11 @@ function updateUndoRedoButtons() {
 // ---------- Geometry ----------
 function nodeSize(node) {
   const t = NODE_TYPES[node.type];
-  const lines = (node.label || '').split('\n');
-  const longest = lines.reduce((m, l) => Math.max(m, l.length), 0);
+  const labelLines = (node.label || '').split('\n');
+  const longest = labelLines.reduce((m, l) => Math.max(m, l.length), 0);
   let width = Math.max(130, Math.min(260, longest * 8.5 + 32));
-  let height = 52;
+  const extraLabelLines = Math.max(0, labelLines.length - 1);
+  let height = 52 + extraLabelLines * 18;
   if (node.description && node.description.trim()) {
     // Allow taller nodes when description is present (multi-line)
     const desc = node.description.trim();
@@ -1093,6 +1175,77 @@ function renderOverlay() {
     const h = Math.abs(m.y2 - m.y1);
     overlayLayer.appendChild(el('rect', { class: 'marquee-rect', x, y, width: w, height: h }));
   }
+  // Alignment guides during drag
+  if (state.alignGuides && state.alignGuides.length > 0) {
+    // Compute viewport extents in world coords so the guide spans the visible canvas
+    const rect = svg.getBoundingClientRect();
+    const tl = screenToWorld({ x: 0, y: 0 });
+    const br = screenToWorld({ x: rect.width, y: rect.height });
+    for (const g of state.alignGuides) {
+      if (g.type === 'v') {
+        overlayLayer.appendChild(el('line', {
+          class: 'align-guide',
+          x1: g.value, y1: tl.y, x2: g.value, y2: br.y,
+        }));
+      } else if (g.type === 'h') {
+        overlayLayer.appendChild(el('line', {
+          class: 'align-guide',
+          x1: tl.x, y1: g.value, x2: br.x, y2: g.value,
+        }));
+      }
+    }
+  }
+  if (state.connectDrag) {
+    const src = state.nodes.find(n => n.id === state.connectDrag.sourceId);
+    if (src) {
+      const a = nodeBounds(src);
+      const target = { x: state.connectDrag.currentWorldX, y: state.connectDrag.currentWorldY };
+      // Clip from source bounds toward target
+      const dx = target.x - a.cx;
+      const dy = target.y - a.cy;
+      let startX = a.cx, startY = a.cy;
+      if (dx !== 0 || dy !== 0) {
+        const hw = a.w/2 + 2, hh = a.h/2 + 2;
+        const sx = dx !== 0 ? hw / Math.abs(dx) : Infinity;
+        const sy = dy !== 0 ? hh / Math.abs(dy) : Infinity;
+        const s = Math.min(sx, sy);
+        startX = a.cx + dx * s;
+        startY = a.cy + dy * s;
+      }
+      overlayLayer.appendChild(el('path', {
+        class: 'connect-preview',
+        d: `M ${startX} ${startY} L ${target.x} ${target.y}`,
+      }));
+    }
+  }
+}
+
+function attachConnectHandle(circle, sourceNode) {
+  circle.addEventListener('pointerdown', (ev) => {
+    ev.stopPropagation();
+    pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    const wp = worldPoint(ev);
+    state.connectDrag = {
+      sourceId: sourceNode.id,
+      currentWorldX: wp.x,
+      currentWorldY: wp.y,
+      hoverTargetId: null,
+      pointerId: ev.pointerId,
+    };
+    render();
+  });
+}
+
+function findNodeUnderWorldPoint(wx, wy) {
+  // Test in reverse z-order (last rendered = on top)
+  for (let i = state.nodes.length - 1; i >= 0; i--) {
+    const n = state.nodes[i];
+    const b = nodeBounds(n);
+    if (wx >= b.x && wx <= b.x + b.w && wy >= b.y && wy <= b.y + b.h) {
+      return n;
+    }
+  }
+  return null;
 }
 
 function wrapDescription(desc, maxCharsPerLine, maxLines) {
@@ -1173,20 +1326,33 @@ function renderNodes() {
     const factor = SIZE_FACTOR[n.size] || 1;
     const labelFontSize = Math.round(13 * factor);
     const descFontSize = Math.round(12 * factor);
-    let labelY = hasDesc ? -((descFontSize + 4) * 0.7) : 0;
-    if (t.shape === 'folder') labelY += 4;
-    const label = el('text', {
-      class: 'node-text', x: 0, y: labelY,
-      fill: t.text, 'font-size': labelFontSize,
-    }, n.label || '(untitled)');
-    g.appendChild(label);
+    const labelLineH = labelFontSize + 4;
+    const labelLines = (n.label || '(untitled)').split('\n');
+    // Vertical anchor for the label block: centered if no description, slightly above center if description present
+    const labelBlockHeight = labelLines.length * labelLineH;
+    let labelTopY = hasDesc
+      ? -((descFontSize + 4) * 0.7) - (labelBlockHeight - labelLineH) / 2
+      : -(labelBlockHeight - labelLineH) / 2;
+    if (t.shape === 'folder') labelTopY += 4;
+    labelLines.forEach((line, i) => {
+      const y = labelTopY + i * labelLineH;
+      const label = el('text', {
+        class: 'node-text', x: 0, y,
+        fill: t.text, 'font-size': labelFontSize,
+      }, line || ' ');
+      g.appendChild(label);
+    });
+    // Compute the "label bottom" Y for description anchoring below
+    const labelBottomY = labelTopY + (labelLines.length - 1) * labelLineH;
+    const labelFontSizeForDesc = labelFontSize; // unchanged, kept for clarity
+    const labelY = labelTopY; // legacy alias used elsewhere
     if (hasDesc) {
+      // Description sits below the last label line
+      const descStartY = labelBottomY + (labelFontSize / 2) + 6;
       // For diamonds, compute available width at the lowest description line
-      // (where the diamond is narrowest at that vertical offset)
       let availableWidth;
       if (t.shape === 'diamond') {
-        const lastLineY = (labelFontSize / 2 + 6) + 1 * (descFontSize + 2);
-        // width of diamond at this y: w * (1 - 2|y|/h)
+        const lastLineY = descStartY + 1 * (descFontSize + 2);
         const widthAtLine = b.w * (1 - 2 * lastLineY / b.h);
         availableWidth = Math.max(60, widthAtLine - 12);
       } else {
@@ -1194,10 +1360,9 @@ function renderNodes() {
       }
       const charsPerLine = Math.max(14, Math.floor(availableWidth / (descFontSize * 0.55)));
       const descLines = wrapDescription(n.description.trim(), charsPerLine, 2);
-      // Slightly muted version of the node's text color for description
       const descColor = t.text;
       descLines.forEach((line, i) => {
-        const y = (labelFontSize / 2 + 6) + i * (descFontSize + 2);
+        const y = descStartY + i * (descFontSize + 2);
         const sub = el('text', {
           class: 'node-sub', x: 0, y,
           'font-size': descFontSize,
@@ -1209,6 +1374,29 @@ function renderNodes() {
 
     nodesLayer.appendChild(g);
     attachNodeHandlers(g, n);
+
+    // Connection handles on the sole selected node (skip when actively connecting via mode)
+    const isSoleSelected = state.selectedNodeIds.size === 1
+      && state.selectedNodeIds.has(n.id)
+      && state.mode !== 'connect'
+      && state.mode !== 'pan'
+      && !state.connectDrag;
+    if (isSoleSelected) {
+      const handles = [
+        { x:  0,        y: -b.h/2 },
+        { x:  b.w/2,    y:  0 },
+        { x:  0,        y:  b.h/2 },
+        { x: -b.w/2,    y:  0 },
+      ];
+      for (const h of handles) {
+        const c = el('circle', {
+          class: 'connect-handle',
+          cx: h.x, cy: h.y, r: 6,
+        });
+        attachConnectHandle(c, n);
+        g.appendChild(c);
+      }
+    }
   }
 }
 
@@ -1231,13 +1419,20 @@ function renderEdges() {
       d: path,
       'marker-end': isSel ? 'url(#arrow-sel)' : 'url(#arrow)',
     });
+    hit.addEventListener('contextmenu', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      showContextMenu(ev.clientX, ev.clientY, menuItemsForEdge(e.id));
+    });
     hit.addEventListener('pointerdown', (ev) => {
       pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
       if (pointers.size >= 2) {
         cancelOngoingOperations();
+        cancelLongPress();
         startPinch();
         return;
       }
+      armLongPress(ev, menuItemsForEdge(e.id));
       if (state.mode === 'pan' || state.spaceDown || ev.button === 1 || isTouchPointer(ev) && state.mode !== 'connect') {
         // Touch on edge falls through to selectEdge (tap to select). Only start pan for actual pan modes.
         if (state.mode === 'pan' || state.spaceDown || ev.button === 1) {
@@ -1282,14 +1477,23 @@ function screenToWorld(p) {
 }
 
 function attachNodeHandlers(g, node) {
+  // Desktop right-click → context menu
+  g.addEventListener('contextmenu', (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    showContextMenu(ev.clientX, ev.clientY, menuItemsForNode(node.id));
+  });
   g.addEventListener('pointerdown', (ev) => {
     pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
     if (pointers.size >= 2) {
       cancelOngoingOperations();
+      cancelLongPress();
       startPinch();
       ev.stopPropagation();
       return;
     }
+    // Long-press for touch context menu
+    armLongPress(ev, menuItemsForNode(node.id));
     ev.stopPropagation();
 
     // Pan takes priority over node interaction
@@ -1373,13 +1577,21 @@ function startPan(ev) {
   render();
 }
 
+svg.addEventListener('contextmenu', (ev) => {
+  // Only intercept right-click on empty canvas (node handlers stopPropagation theirs)
+  ev.preventDefault();
+  showContextMenu(ev.clientX, ev.clientY, menuItemsForCanvas());
+});
 svg.addEventListener('pointerdown', (ev) => {
   pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
   if (pointers.size >= 2) {
     cancelOngoingOperations();
+    cancelLongPress();
     startPinch();
     return;
   }
+  // Long-press on empty canvas → canvas context menu
+  armLongPress(ev, menuItemsForCanvas());
 
   // Pan mode (toggle, spacebar, middle click) on empty canvas → pan
   if (state.mode === 'pan' || state.spaceDown || ev.button === 1) {
@@ -1415,9 +1627,26 @@ document.addEventListener('pointermove', (ev) => {
   if (pointers.has(ev.pointerId)) {
     pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
   }
+  // Cancel long-press if pointer moved beyond threshold
+  if (longPressOrigin) {
+    const dx = ev.clientX - longPressOrigin.x;
+    const dy = ev.clientY - longPressOrigin.y;
+    if (Math.hypot(dx, dy) > LONG_PRESS_MOVE_PX) cancelLongPress();
+  }
   // Pinch in progress — handle first, ignore other operations
   if (pinch && pointers.size >= 2) {
     updatePinch();
+    return;
+  }
+  // Connect-drag in progress
+  if (state.connectDrag) {
+    const wp = worldPoint(ev);
+    state.connectDrag.currentWorldX = wp.x;
+    state.connectDrag.currentWorldY = wp.y;
+    const hover = findNodeUnderWorldPoint(wp.x, wp.y);
+    state.connectDrag.hoverTargetId = (hover && hover.id !== state.connectDrag.sourceId) ? hover.id : null;
+    // Re-render overlay + nodes (for hover highlight on the target if we add one)
+    renderOverlay();
     return;
   }
   // Pan in progress
@@ -1438,16 +1667,64 @@ document.addEventListener('pointermove', (ev) => {
       state.drag.moved = true;
       snapshot(); // snap at start of actual move, not on every click
     }
+    // First pass: provisional positions on the dragged nodes
     for (const id of state.drag.ids) {
       const n = state.nodes.find(x => x.id === id);
       const orig = state.drag.origPositions.get(id);
       if (!n || !orig) continue;
       n.x = Math.round((orig.x + dx) / 10) * 10;
       n.y = Math.round((orig.y + dy) / 10) * 10;
+    }
+    // Compute alignment guides + snap (compare each dragged node's edges/center
+    // to non-dragged nodes; if within threshold, snap and emit a guide line)
+    const SNAP_PX_SCREEN = 6;
+    const snapPx = SNAP_PX_SCREEN / state.zoom;
+    const dragIds = new Set(state.drag.ids);
+    const others = state.nodes.filter(n => !dragIds.has(n.id));
+    let snapX = null, snapY = null; // applied snap deltas
+    const guides = [];
+    if (state.drag.ids.length === 1 && others.length > 0) {
+      const n = state.nodes.find(x => x.id === state.drag.ids[0]);
+      const b = nodeBounds(n);
+      // Source values: left, center, right; top, middle, bottom
+      const srcXs = [b.x, b.cx, b.x + b.w];
+      const srcYs = [b.y, b.cy, b.y + b.h];
+      let bestDX = Infinity, bestDY = Infinity;
+      let guideX = null, guideY = null;
+      for (const o of others) {
+        const ob = nodeBounds(o);
+        const oXs = [ob.x, ob.cx, ob.x + ob.w];
+        const oYs = [ob.y, ob.cy, ob.y + ob.h];
+        for (let i = 0; i < 3; i++) {
+          for (let j = 0; j < 3; j++) {
+            const ddx = oXs[j] - srcXs[i];
+            if (Math.abs(ddx) < snapPx && Math.abs(ddx) < Math.abs(bestDX)) {
+              bestDX = ddx; guideX = oXs[j];
+            }
+            const ddy = oYs[j] - srcYs[i];
+            if (Math.abs(ddy) < snapPx && Math.abs(ddy) < Math.abs(bestDY)) {
+              bestDY = ddy; guideY = oYs[j];
+            }
+          }
+        }
+      }
+      if (guideX !== null) { snapX = bestDX; guides.push({ type: 'v', value: guideX }); }
+      if (guideY !== null) { snapY = bestDY; guides.push({ type: 'h', value: guideY }); }
+      if (snapX || snapY) {
+        n.x = Math.round((n.x + (snapX || 0)) / 1) * 1;
+        n.y = Math.round((n.y + (snapY || 0)) / 1) * 1;
+      }
+    }
+    state.alignGuides = guides;
+    // Apply transforms
+    for (const id of state.drag.ids) {
+      const n = state.nodes.find(x => x.id === id);
+      if (!n) continue;
       const g = nodesLayer.querySelector(`g[data-id="${id}"]`);
       if (g) g.setAttribute('transform', `translate(${n.x},${n.y})`);
     }
     renderEdges();
+    renderOverlay();
     return;
   }
 
@@ -1479,6 +1756,29 @@ document.addEventListener('pointermove', (ev) => {
 function onPointerEnd(ev) {
   // Remove the pointer that ended
   pointers.delete(ev.pointerId);
+  // Cancel any pending long-press
+  cancelLongPress();
+  // Connect-drag release: create edge if dropped on a node, otherwise cancel
+  if (state.connectDrag) {
+    const cd = state.connectDrag;
+    const target = cd.hoverTargetId ? state.nodes.find(n => n.id === cd.hoverTargetId) : null;
+    if (target && target.id !== cd.sourceId) {
+      snapshot();
+      const newEdge = {
+        id: genId('edge'),
+        source: cd.sourceId,
+        target: target.id,
+        label: '',
+      };
+      state.edges.push(newEdge);
+      state.selectedNodeIds.clear();
+      state.selectedEdgeId = newEdge.id;
+      save();
+    }
+    state.connectDrag = null;
+    render();
+    return;
+  }
   // If pinch was active and we now have <2 pointers, end it
   if (pinch && pointers.size < 2) {
     endPinch();
@@ -1498,6 +1798,7 @@ function onPointerEnd(ev) {
   if (state.drag && pointers.size === 0) {
     const moved = state.drag.moved;
     state.drag = null;
+    state.alignGuides = [];
     if (moved) save();
     render();
     return;
@@ -1560,6 +1861,13 @@ document.addEventListener('keydown', (ev) => {
     toggleConnect();
   } else if ((ev.key === 'f' || ev.key === 'F') && !ev.metaKey && !ev.ctrlKey) {
     fitToContent();
+  } else if ((ev.key === 'l' || ev.key === 'L') && !ev.metaKey && !ev.ctrlKey) {
+    autoLayout();
+  } else if (/^[1-8]$/.test(ev.key) && !ev.metaKey && !ev.ctrlKey && !ev.shiftKey && !ev.altKey) {
+    // Quick-add: 1-8 maps to the 8 node types
+    const types = Object.keys(NODE_TYPES);
+    const idx = parseInt(ev.key) - 1;
+    if (idx < types.length) addNode(types[idx]);
   } else if (ev.key === 'a' && (ev.metaKey || ev.ctrlKey)) {
     state.selectedNodeIds = new Set(state.nodes.map(n => n.id));
     state.selectedEdgeId = null;
@@ -1731,6 +2039,125 @@ function resetView() {
   render();
 }
 
+// ---------- Context menu (right-click / long-press) ----------
+const ctxMenu = document.getElementById('context-menu');
+let longPressTimer = null;
+let longPressOrigin = null;
+const LONG_PRESS_MS = 500;
+const LONG_PRESS_MOVE_PX = 10;
+
+function showContextMenu(clientX, clientY, items) {
+  ctxMenu.innerHTML = '';
+  for (const it of items) {
+    if (it === 'sep') {
+      ctxMenu.appendChild(document.createElement('hr'));
+      continue;
+    }
+    const b = document.createElement('button');
+    b.className = 'ctx-item' + (it.danger ? ' danger' : '');
+    b.textContent = it.label;
+    b.addEventListener('click', () => {
+      closeContextMenu();
+      try { it.action(); } catch(e) { console.warn(e); }
+    });
+    ctxMenu.appendChild(b);
+  }
+  // Position with viewport clamping
+  ctxMenu.style.left = '0px'; ctxMenu.style.top = '0px';
+  ctxMenu.classList.add('open');
+  const rect = ctxMenu.getBoundingClientRect();
+  const vw = window.innerWidth, vh = window.innerHeight;
+  let x = clientX, y = clientY;
+  if (x + rect.width > vw - 4) x = vw - rect.width - 4;
+  if (y + rect.height > vh - 4) y = vh - rect.height - 4;
+  ctxMenu.style.left = x + 'px';
+  ctxMenu.style.top = y + 'px';
+}
+function closeContextMenu() { ctxMenu.classList.remove('open'); }
+document.addEventListener('click', (e) => {
+  if (!ctxMenu.contains(e.target)) closeContextMenu();
+});
+window.addEventListener('blur', closeContextMenu);
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape' && ctxMenu.classList.contains('open')) {
+    closeContextMenu();
+    ev.preventDefault();
+  }
+});
+
+function menuItemsForNode(nodeId) {
+  return [
+    { label: 'Edit properties', action: () => {
+      state.selectedNodeIds = new Set([nodeId]);
+      state.selectedEdgeId = null;
+      state.panTab = 'properties';
+      applyPanelCollapsed(false);
+      render();
+    }},
+    { label: 'Duplicate', action: () => {
+      state.selectedNodeIds = new Set([nodeId]);
+      state.selectedEdgeId = null;
+      duplicateSelected();
+    }},
+    { label: 'Connect from this…', action: () => {
+      state.mode = 'connect';
+      state.connectSource = nodeId;
+      render();
+    }},
+    'sep',
+    { label: 'Delete', danger: true, action: () => {
+      state.selectedNodeIds = new Set([nodeId]);
+      state.selectedEdgeId = null;
+      deleteSelected();
+    }},
+  ];
+}
+function menuItemsForEdge(edgeId) {
+  return [
+    { label: 'Edit label', action: () => {
+      selectEdge(edgeId);
+      state.panTab = 'properties';
+      applyPanelCollapsed(false);
+      render();
+    }},
+    'sep',
+    { label: 'Delete connection', danger: true, action: () => {
+      state.selectedEdgeId = edgeId;
+      state.selectedNodeIds.clear();
+      deleteSelected();
+    }},
+  ];
+}
+function menuItemsForCanvas() {
+  return [
+    { label: 'Paste node here', action: () => {
+      // Future: clipboard. For now, no-op since clipboard isn't tracked.
+    }},
+    { label: 'Fit to content', action: () => fitToContent() },
+    { label: 'Reset view', action: () => resetView() },
+    { label: 'Auto-layout', action: () => autoLayout() },
+  ];
+}
+
+function cancelLongPress() {
+  if (longPressTimer) clearTimeout(longPressTimer);
+  longPressTimer = null;
+  longPressOrigin = null;
+}
+function armLongPress(ev, items) {
+  // Only for touch / pen — desktop uses contextmenu event
+  if (!isTouchPointer(ev)) return;
+  cancelLongPress();
+  longPressOrigin = { x: ev.clientX, y: ev.clientY };
+  longPressTimer = setTimeout(() => {
+    if (!longPressOrigin) return;
+    showContextMenu(longPressOrigin.x, longPressOrigin.y, items);
+    longPressOrigin = null;
+    // Also cancel any drag/select that may have been mid-start
+    cancelOngoingOperations();
+  }, LONG_PRESS_MS);
+}
+
 // ---------- Pointer tracking (mouse + touch + pen) ----------
 const pointers = new Map(); // pointerId -> {x, y}
 
@@ -1810,6 +2237,104 @@ function setZoom(newZoom, anchorScreen) {
 
 function zoomBy(factor, anchorScreen) {
   setZoom(state.zoom * factor, anchorScreen);
+}
+
+// ---------- Auto-layout ----------
+// Layered top-to-bottom layout. Roots (no incoming edges) on top; layers below.
+// Nodes within a layer spread horizontally based on the average parent position
+// (barycentric heuristic) to keep edges from crossing too much.
+function autoLayout() {
+  if (state.nodes.length === 0) return;
+  snapshot();
+
+  // Build adjacency
+  const incoming = new Map();
+  const outgoing = new Map();
+  for (const n of state.nodes) { incoming.set(n.id, []); outgoing.set(n.id, []); }
+  for (const e of state.edges) {
+    if (outgoing.has(e.source)) outgoing.get(e.source).push(e.target);
+    if (incoming.has(e.target)) incoming.get(e.target).push(e.source);
+  }
+
+  // Roots: no incoming edges (preferring start/folder nodes if multiple)
+  let roots = state.nodes.filter(n => incoming.get(n.id).length === 0);
+  if (roots.length === 0) {
+    // All nodes are in a cycle; pick the node(s) with fewest incoming
+    const minIn = Math.min(...state.nodes.map(n => incoming.get(n.id).length));
+    roots = state.nodes.filter(n => incoming.get(n.id).length === minIn);
+  }
+  // Stable order for roots
+  roots.sort((a, b) => {
+    const rank = { start: 0, folder: 1 };
+    return (rank[a.type] ?? 10) - (rank[b.type] ?? 10);
+  });
+
+  // BFS layer assignment (longest path from any root)
+  const layer = new Map();
+  const queue = [];
+  for (const r of roots) { layer.set(r.id, 0); queue.push(r.id); }
+  while (queue.length) {
+    const id = queue.shift();
+    const d = layer.get(id);
+    for (const t of outgoing.get(id) || []) {
+      const cur = layer.get(t);
+      if (cur === undefined || cur < d + 1) {
+        layer.set(t, d + 1);
+        queue.push(t);
+      }
+    }
+  }
+  for (const n of state.nodes) if (!layer.has(n.id)) layer.set(n.id, 0);
+
+  // Group nodes by layer
+  const layers = new Map();
+  for (const n of state.nodes) {
+    const l = layer.get(n.id);
+    if (!layers.has(l)) layers.set(l, []);
+    layers.get(l).push(n);
+  }
+  const sortedLayers = Array.from(layers.entries()).sort((a, b) => a[0] - b[0]);
+
+  // Within-layer ordering using barycentric heuristic on the previous layer's positions
+  // First pass: keep input order for layer 0
+  const orderInLayer = new Map(); // nodeId -> index within layer
+  sortedLayers.forEach(([l, nodes]) => {
+    if (l === 0) {
+      nodes.forEach((n, i) => orderInLayer.set(n.id, i));
+      return;
+    }
+    // Average parent index in previous layer (use orderInLayer values)
+    const scored = nodes.map(n => {
+      const parents = incoming.get(n.id) || [];
+      const positions = parents.map(p => orderInLayer.get(p)).filter(v => v !== undefined);
+      const avg = positions.length ? positions.reduce((s, v) => s + v, 0) / positions.length : 0;
+      return { n, avg };
+    });
+    scored.sort((a, b) => a.avg - b.avg);
+    scored.forEach((s, i) => orderInLayer.set(s.n.id, i));
+    nodes.length = 0;
+    scored.forEach(s => nodes.push(s.n));
+  });
+
+  // Now place nodes
+  const SPACING_Y = 140;
+  const SPACING_X = 200;
+  const TOP = 80;
+  // Width of the widest layer determines centering
+  const widest = Math.max(...sortedLayers.map(([, nodes]) => nodes.length));
+  for (const [l, nodes] of sortedLayers) {
+    const y = TOP + l * SPACING_Y;
+    const totalWidth = (nodes.length - 1) * SPACING_X;
+    const startX = -totalWidth / 2;
+    nodes.forEach((n, i) => {
+      n.x = Math.round((startX + i * SPACING_X) / 10) * 10;
+      n.y = Math.round(y / 10) * 10;
+    });
+  }
+
+  save();
+  fitToContent();
+  setStatus('Auto-layout applied.');
 }
 
 function fitToContent(padding = 60) {
@@ -2038,7 +2563,7 @@ function renderPanel() {
     c.innerHTML = `
       <div class="field">
         <label>Label</label>
-        <input type="text" id="f-label" value="${escapeHtml(n.label || '')}" placeholder="Short name shown on the node">
+        <textarea id="f-label" class="label-input" rows="1" placeholder="Short name shown on the node — press Enter for line break">${escapeHtml(n.label || '')}</textarea>
       </div>
       <div class="field">
         <label>Description (optional)</label>
@@ -2065,8 +2590,17 @@ function renderPanel() {
         <button class="btn danger" id="f-delete">Delete</button>
       </div>
     `;
-    document.getElementById('f-label').addEventListener('focus', snapshot);
-    document.getElementById('f-label').addEventListener('input', (e) => { n.label = e.target.value; save(); renderNodes(); renderEdges(); renderOutput(); });
+    const labelInput = document.getElementById('f-label');
+    function autoGrowLabel() {
+      labelInput.style.height = 'auto';
+      labelInput.style.height = labelInput.scrollHeight + 'px';
+    }
+    autoGrowLabel();
+    labelInput.addEventListener('focus', snapshot);
+    labelInput.addEventListener('input', (e) => {
+      n.label = e.target.value; save(); renderNodes(); renderEdges(); renderOutput();
+      autoGrowLabel();
+    });
     document.getElementById('f-desc').addEventListener('focus', snapshot);
     document.getElementById('f-desc').addEventListener('input', (e) => { n.description = e.target.value; save(); renderNodes(); renderEdges(); renderOutput(); });
     document.getElementById('f-type').addEventListener('change', (e) => { snapshot(); n.type = e.target.value; const h = document.getElementById('f-type-hint'); if (h) h.textContent = NODE_TYPES[n.type].hint || ''; save(); renderNodes(); renderEdges(); renderOutput(); });
@@ -2413,27 +2947,36 @@ function traverseAscii(node, visited, depth, prefix) {
 function buildToolbar() {
   const g = document.getElementById('add-nodes-group');
   const menu = document.getElementById('add-menu');
+  const floatingMenu = document.getElementById('floating-add-menu');
   g.innerHTML = '';
   if (menu) menu.innerHTML = '';
-  for (const [k, v] of Object.entries(NODE_TYPES)) {
+  if (floatingMenu) floatingMenu.innerHTML = '';
+  const typeKeys = Object.keys(NODE_TYPES);
+  typeKeys.forEach((k, i) => {
+    const v = NODE_TYPES[k];
+    const hotkey = i < 9 ? (i + 1) : null;
+    const hotkeyHtml = hotkey ? `<span style="float:right; color:var(--text-faint); font-size:11px; margin-left:12px;">${hotkey}</span>` : '';
     const b = document.createElement('button');
     b.className = 'btn add-node-btn';
     b.innerHTML = `<span class="dot" style="background:${v.color}; border:1px solid ${v.stroke};"></span>+ ${v.label}`;
-    b.title = `${v.label} — ${v.hint || 'Add a node'}`;
+    b.title = `${v.label} — ${v.hint || 'Add a node'}${hotkey ? ` (press ${hotkey})` : ''}`;
     b.addEventListener('click', () => addNode(k));
     g.appendChild(b);
 
-    if (menu) {
+    const makeMenuItem = (closeDropdownId) => {
       const mi = document.createElement('button');
       mi.className = 'dropdown-item';
-      mi.innerHTML = `<span class="dot" style="display:inline-block; width:10px; height:10px; border-radius:2px; vertical-align:middle; margin-right:8px; background:${v.color}; border:1px solid ${v.stroke};"></span>${v.label}`;
+      mi.innerHTML = `<span class="dot" style="display:inline-block; width:10px; height:10px; border-radius:2px; vertical-align:middle; margin-right:8px; background:${v.color}; border:1px solid ${v.stroke};"></span>${v.label}${hotkeyHtml}`;
+      mi.title = v.hint || '';
       mi.addEventListener('click', () => {
-        document.getElementById('add-dropdown').classList.remove('open');
+        document.getElementById(closeDropdownId).classList.remove('open');
         addNode(k);
       });
-      menu.appendChild(mi);
-    }
-  }
+      return mi;
+    };
+    if (menu) menu.appendChild(makeMenuItem('add-dropdown'));
+    if (floatingMenu) floatingMenu.appendChild(makeMenuItem('floating-add-dropdown'));
+  });
 }
 
 document.getElementById('connect-btn').addEventListener('click', toggleConnect);
@@ -2446,6 +2989,7 @@ document.getElementById('zoom-in-btn').addEventListener('click', () => zoomBy(1.
 document.getElementById('zoom-out-btn').addEventListener('click', () => zoomBy(1/1.2));
 document.getElementById('zoom-display').addEventListener('click', () => setZoom(1));
 document.getElementById('fit-content-btn').addEventListener('click', () => fitToContent());
+document.getElementById('auto-layout-btn').addEventListener('click', () => autoLayout());
 
 // ---------- Theme ----------
 function applyTheme(theme) {
@@ -2569,26 +3113,143 @@ document.getElementById('title-input').addEventListener('input', (e) => {
   renderOutput();
 });
 // ---------- Project management ----------
-const EXAMPLE_SEED = {
-  title: 'Example: simple login flow',
-  nodes: [
-    { id: 'node_1', type: 'start',    label: 'App opens',          description: '', x: 240, y: 100 },
-    { id: 'node_2', type: 'decision', label: 'Already logged in?', description: 'Check stored auth token', x: 240, y: 220 },
-    { id: 'node_3', type: 'screen',   label: 'Show login',         description: '', x: 100, y: 360 },
-    { id: 'node_4', type: 'screen',   label: 'Show dashboard',     description: 'Main app UI', x: 400, y: 360 },
-    { id: 'node_5', type: 'process',  label: 'Authenticate',       description: 'POST /auth, store token', x: 100, y: 480 },
-  ],
-  edges: [
-    { id: 'edge_1', source: 'node_1', target: 'node_2', label: '' },
-    { id: 'edge_2', source: 'node_2', target: 'node_4', label: 'yes' },
-    { id: 'edge_3', source: 'node_2', target: 'node_3', label: 'no' },
-    { id: 'edge_4', source: 'node_3', target: 'node_5', label: 'submit' },
-    { id: 'edge_5', source: 'node_5', target: 'node_4', label: '' },
-  ],
-  nextId: 10,
+const TEMPLATES = {
+  login: {
+    label: 'Login flow',
+    description: 'Simple authentication: check token → show login or dashboard',
+    seed: {
+      title: 'Login flow',
+      nodes: [
+        { id: 'node_1', type: 'start',    label: 'App opens',          description: '', x: 240, y: 100 },
+        { id: 'node_2', type: 'decision', label: 'Already logged in?', description: 'Check stored auth token', x: 240, y: 240 },
+        { id: 'node_3', type: 'screen',   label: 'Show login',         description: '', x: 80, y: 400 },
+        { id: 'node_4', type: 'screen',   label: 'Show dashboard',     description: 'Main app UI', x: 400, y: 400 },
+        { id: 'node_5', type: 'process',  label: 'Authenticate',       description: 'POST /auth, store token', x: 80, y: 540 },
+      ],
+      edges: [
+        { id: 'edge_1', source: 'node_1', target: 'node_2', label: '' },
+        { id: 'edge_2', source: 'node_2', target: 'node_4', label: 'yes' },
+        { id: 'edge_3', source: 'node_2', target: 'node_3', label: 'no' },
+        { id: 'edge_4', source: 'node_3', target: 'node_5', label: 'submit' },
+        { id: 'edge_5', source: 'node_5', target: 'node_4', label: '' },
+      ],
+      nextId: 10,
+    },
+  },
+  pipeline: {
+    label: 'Data pipeline',
+    description: 'Input → validate → transform → store → query',
+    seed: {
+      title: 'Data pipeline',
+      nodes: [
+        { id: 'node_1', type: 'start',   label: 'Source data',  description: 'CSV / API / event stream', x: 240, y: 100 },
+        { id: 'node_2', type: 'decision',label: 'Valid?',       description: 'Schema + range checks',  x: 240, y: 240 },
+        { id: 'node_3', type: 'process', label: 'Transform',    description: 'Normalize, enrich, dedupe', x: 240, y: 400 },
+        { id: 'node_4', type: 'data',    label: 'Warehouse',    description: 'Append to dim/fact tables', x: 240, y: 540 },
+        { id: 'node_5', type: 'process', label: 'Reject',       description: 'Write to error queue',     x: 460, y: 240 },
+        { id: 'node_6', type: 'end',     label: 'Available to query', description: '', x: 240, y: 680 },
+      ],
+      edges: [
+        { id: 'edge_1', source: 'node_1', target: 'node_2', label: '' },
+        { id: 'edge_2', source: 'node_2', target: 'node_3', label: 'yes' },
+        { id: 'edge_3', source: 'node_2', target: 'node_5', label: 'no' },
+        { id: 'edge_4', source: 'node_3', target: 'node_4', label: '' },
+        { id: 'edge_5', source: 'node_4', target: 'node_6', label: '' },
+      ],
+      nextId: 10,
+    },
+  },
+  fileTree: {
+    label: 'File / folder structure',
+    description: 'A small app layout — use the "Folder tree" output to copy as ASCII',
+    seed: {
+      title: 'App file structure',
+      nodes: [
+        { id: 'node_1',  type: 'folder', label: 'my-app',     description: '', x: 240, y: 80 },
+        { id: 'node_2',  type: 'folder', label: 'src',        description: '', x: 100, y: 220 },
+        { id: 'node_3',  type: 'folder', label: 'public',     description: '', x: 380, y: 220 },
+        { id: 'node_4',  type: 'folder', label: 'components', description: '', x: 0,   y: 360 },
+        { id: 'node_5',  type: 'data',   label: 'App.tsx',    description: 'Root component', x: 180, y: 360 },
+        { id: 'node_6',  type: 'data',   label: 'index.html', description: '', x: 320, y: 360 },
+        { id: 'node_7',  type: 'data',   label: 'favicon.png',description: '', x: 460, y: 360 },
+        { id: 'node_8',  type: 'data',   label: 'Button.tsx', description: '', x: -80, y: 500 },
+        { id: 'node_9',  type: 'data',   label: 'Card.tsx',   description: '', x: 80,  y: 500 },
+      ],
+      edges: [
+        { id: 'edge_1', source: 'node_1', target: 'node_2', label: '' },
+        { id: 'edge_2', source: 'node_1', target: 'node_3', label: '' },
+        { id: 'edge_3', source: 'node_2', target: 'node_4', label: '' },
+        { id: 'edge_4', source: 'node_2', target: 'node_5', label: '' },
+        { id: 'edge_5', source: 'node_3', target: 'node_6', label: '' },
+        { id: 'edge_6', source: 'node_3', target: 'node_7', label: '' },
+        { id: 'edge_7', source: 'node_4', target: 'node_8', label: '' },
+        { id: 'edge_8', source: 'node_4', target: 'node_9', label: '' },
+      ],
+      nextId: 14,
+    },
+  },
+  errorHandling: {
+    label: 'Request with retry',
+    description: 'Network request with success / fail / retry branches',
+    seed: {
+      title: 'Request with retry',
+      nodes: [
+        { id: 'node_1', type: 'start',    label: 'Trigger',         description: 'User action or scheduled', x: 240, y: 80 },
+        { id: 'node_2', type: 'process',  label: 'Send request',    description: '', x: 240, y: 220 },
+        { id: 'node_3', type: 'decision', label: 'Status?',         description: 'HTTP status code',         x: 240, y: 360 },
+        { id: 'node_4', type: 'end',      label: 'Done',            description: 'Update UI',                x: 80,  y: 500 },
+        { id: 'node_5', type: 'decision', label: 'Retriable?',      description: '5xx or network error',     x: 400, y: 500 },
+        { id: 'node_6', type: 'process',  label: 'Wait + backoff',  description: 'Exponential, max N tries', x: 560, y: 360 },
+        { id: 'node_7', type: 'end',      label: 'Show error',      description: 'Log + surface to user',    x: 560, y: 500 },
+      ],
+      edges: [
+        { id: 'edge_1', source: 'node_1', target: 'node_2', label: '' },
+        { id: 'edge_2', source: 'node_2', target: 'node_3', label: '' },
+        { id: 'edge_3', source: 'node_3', target: 'node_4', label: '2xx' },
+        { id: 'edge_4', source: 'node_3', target: 'node_5', label: '4xx / 5xx' },
+        { id: 'edge_5', source: 'node_5', target: 'node_6', label: 'yes' },
+        { id: 'edge_6', source: 'node_5', target: 'node_7', label: 'no' },
+        { id: 'edge_7', source: 'node_6', target: 'node_2', label: '' },
+      ],
+      nextId: 12,
+    },
+  },
+  decisionTree: {
+    label: 'Decision tree',
+    description: 'A root decision branching into outcomes',
+    seed: {
+      title: 'Decision tree',
+      nodes: [
+        { id: 'node_1', type: 'decision', label: 'Question?',  description: '', x: 240, y: 100 },
+        { id: 'node_2', type: 'decision', label: 'Branch A',   description: '', x: 80,  y: 260 },
+        { id: 'node_3', type: 'decision', label: 'Branch B',   description: '', x: 400, y: 260 },
+        { id: 'node_4', type: 'end',      label: 'Outcome 1',  description: '', x: 0,   y: 420 },
+        { id: 'node_5', type: 'end',      label: 'Outcome 2',  description: '', x: 160, y: 420 },
+        { id: 'node_6', type: 'end',      label: 'Outcome 3',  description: '', x: 320, y: 420 },
+        { id: 'node_7', type: 'end',      label: 'Outcome 4',  description: '', x: 480, y: 420 },
+      ],
+      edges: [
+        { id: 'edge_1', source: 'node_1', target: 'node_2', label: 'A' },
+        { id: 'edge_2', source: 'node_1', target: 'node_3', label: 'B' },
+        { id: 'edge_3', source: 'node_2', target: 'node_4', label: 'yes' },
+        { id: 'edge_4', source: 'node_2', target: 'node_5', label: 'no' },
+        { id: 'edge_5', source: 'node_3', target: 'node_6', label: 'yes' },
+        { id: 'edge_6', source: 'node_3', target: 'node_7', label: 'no' },
+      ],
+      nextId: 12,
+    },
+  },
 };
+// Legacy reference — defaults to login template
+const EXAMPLE_SEED = TEMPLATES.login.seed;
 
-function newProject(withExample = false) {
+function newProject(templateKeyOrBool) {
+  // Back-compat: true = login example, false = blank
+  let seed = null;
+  if (templateKeyOrBool === true) seed = TEMPLATES.login.seed;
+  else if (typeof templateKeyOrBool === 'string' && TEMPLATES[templateKeyOrBool]) {
+    seed = TEMPLATES[templateKeyOrBool].seed;
+  }
   state.loading = true;
   state.currentProjectId = 'proj_' + Date.now();
   state.pan = { x: 0, y: 0 };
@@ -2597,11 +3258,11 @@ function newProject(withExample = false) {
   state.redoStack = [];
   state.dirty = false;
   clearSelection();
-  if (withExample) {
-    state.title = EXAMPLE_SEED.title;
-    state.nodes = JSON.parse(JSON.stringify(EXAMPLE_SEED.nodes));
-    state.edges = JSON.parse(JSON.stringify(EXAMPLE_SEED.edges));
-    state.nextId = EXAMPLE_SEED.nextId;
+  if (seed) {
+    state.title = seed.title;
+    state.nodes = JSON.parse(JSON.stringify(seed.nodes));
+    state.edges = JSON.parse(JSON.stringify(seed.edges));
+    state.nextId = seed.nextId;
   } else {
     state.title = 'Untitled flow';
     state.nodes = [];
@@ -2702,7 +3363,11 @@ function renderProjectList() {
     list.innerHTML = '<li class="project-empty">No projects yet. Create one below.</li>';
     return;
   }
-  list.innerHTML = projects.map(p => {
+  // Group: linked files (Recent files) up top; browser-only projects below
+  const linked = projects.filter(p => p.linkName);
+  const unlinked = projects.filter(p => !p.linkName);
+
+  function renderItem(p) {
     const isCurrent = p.id === state.currentProjectId;
     const linkedName = p.linkName;
     const linkedHtml = linkedName
@@ -2722,7 +3387,23 @@ function renderProjectList() {
         </div>
       </li>
     `;
-  }).join('');
+  }
+
+  function sectionHeader(label, count) {
+    return `<li style="padding:8px 10px 4px; font-size:11px; font-weight:500; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.04em; pointer-events:none;">${label} · ${count}</li>`;
+  }
+
+  let html = '';
+  if (linked.length > 0) {
+    html += sectionHeader('Recent files', linked.length);
+    html += linked.map(renderItem).join('');
+  }
+  if (unlinked.length > 0) {
+    if (linked.length > 0) html += sectionHeader('Browser-only', unlinked.length);
+    html += unlinked.map(renderItem).join('');
+  }
+  list.innerHTML = html;
+
   list.querySelectorAll('.project-item').forEach(item => {
     const id = item.dataset.id;
     item.addEventListener('click', (e) => {
@@ -2747,7 +3428,24 @@ function closeProjectsModal() {
 document.getElementById('projects-btn').addEventListener('click', openProjectsModal);
 document.getElementById('modal-close').addEventListener('click', closeProjectsModal);
 document.getElementById('new-blank-btn').addEventListener('click', () => newProject(false));
-document.getElementById('new-example-btn').addEventListener('click', () => newProject(true));
+
+// Build the template dropdown menu
+(function buildTemplateMenu() {
+  const menu = document.getElementById('new-template-menu');
+  if (!menu) return;
+  for (const [key, tpl] of Object.entries(TEMPLATES)) {
+    const mi = document.createElement('button');
+    mi.className = 'dropdown-item';
+    mi.style.padding = '8px 10px';
+    mi.innerHTML = `<div style="font-weight:500;">${escapeHtml(tpl.label)}</div><div style="font-size:11px; color:var(--text-faint); margin-top:2px;">${escapeHtml(tpl.description)}</div>`;
+    mi.addEventListener('click', () => {
+      document.getElementById('new-template-dropdown').classList.remove('open');
+      newProject(key);
+    });
+    menu.appendChild(mi);
+  }
+})();
+wireDropdown('new-template-dropdown', 'new-template-btn');
 document.getElementById('projects-modal').addEventListener('click', (e) => {
   if (e.target.id === 'projects-modal') closeProjectsModal();
 });
@@ -3118,6 +3816,7 @@ function wireDropdown(dropdownId, btnId) {
 wireDropdown('export-dropdown', 'export-menu-btn');
 wireDropdown('more-dropdown', 'more-menu-btn');
 wireDropdown('add-dropdown', 'add-menu-btn');
+wireDropdown('floating-add-dropdown', 'floating-add-btn');
 
 // Global click closes any open dropdown
 document.addEventListener('click', (e) => {
