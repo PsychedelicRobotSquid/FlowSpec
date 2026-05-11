@@ -2,6 +2,20 @@
 
 All notable changes to FlowSpec. Format roughly follows [Keep a Changelog](https://keepachangelog.com/). Versioning is loose pre-1.0 — minor bumps for feature batches, patch bumps for fixes.
 
+## [0.10.3] — 2026-05-11
+
+### Changed
+- **Tidy is now overlap-resolution only** — no more re-layering. The layered BFS approach kept fighting the user's intent and drifted things off-screen on repeated runs. New behavior:
+  - **Idempotent**: hitting Tidy twice does nothing the second time. If everything's already non-overlapping, nothing moves
+  - **Frames move as units** — the frame rectangle and every node inside it translate together. Frames no longer drift away from their contents
+  - **Per-frame pass** resolves overlaps among a frame's children after the top-level pass, so things inside a frame can shift apart without leaving the frame
+  - **Smaller-overlap direction wins** — pushes by the minimum needed (20px padding, snapped to 10px). No teleporting across the canvas
+  - **Bounded at 50 iterations** so cascade-pushing can't run away
+- Scope unchanged: selection-only when something is selected, otherwise all top-level objects (frames as units + un-framed nodes) plus a per-frame pass
+
+### Removed
+- Layered BFS layout, barycentric ordering, width-aware layer placement, centroid-recentering — all replaced by the simpler overlap-resolution algorithm. Templates and the example flow still render correctly because they already have sensible positions
+
 ## [0.10.2] — 2026-05-11
 
 ### Changed

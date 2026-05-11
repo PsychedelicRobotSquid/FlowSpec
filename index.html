@@ -1281,7 +1281,7 @@
 // =============================================================
 // FlowSpec — visual flowchart builder with LLM-friendly text out
 // =============================================================
-const FLOWSPEC_VERSION = '0.10.2';
+const FLOWSPEC_VERSION = '0.10.3';
 
 const NODE_TYPES = {
   start:    { label: 'Start',    color: '#c0dd97', stroke: '#3b6d11', text: '#173404', shape: 'pill',    hint: 'Where the flow begins. Typically one per chart.' },
@@ -3421,184 +3421,154 @@ function updateIssuesUI() {
   }
 }
 
-// ---------- Auto-layout ----------
-// Layered top-to-bottom layout, scoped to either the current selection or
-// (if nothing is selected) all nodes that are NOT inside any frame.
-// Framed nodes count as "already laid out by you" and are left alone.
+// ---------- Tidy (overlap resolution) ----------
+// Idempotent overlap resolution. Doesn't re-layer or move things that aren't
+// in the way of something else.
+//
+// Scope:
+//   - selection active → only the selected nodes are pushed around
+//   - no selection → frames are treated as units (rectangle + children move
+//     together), and free nodes (those not inside any frame) are top-level
+//     obstacles. A second pass resolves overlaps among the children of each
+//     frame.
+//
+// Direction: each overlapping pair is pushed apart along the axis of smaller
+// overlap (less disruption), snapped to 10px, with a 20px gap added.
 function autoLayout() {
   if (state.nodes.length === 0) return;
-
-  // 1) Determine which nodes to lay out
   const hasSelection = state.selectedNodeIds.size > 0;
-  let targetNodes;
+
+  // Helper: is node n inside frame f?
+  const inFrame = (n, f) =>
+    n.x >= f.x && n.x <= f.x + f.w && n.y >= f.y && n.y <= f.y + f.h;
+  const inAnyFrame = (n) => state.frames.some(f => inFrame(n, f));
+
+  // Build top-level obstacles
+  let topLevel;
   if (hasSelection) {
-    targetNodes = state.nodes.filter(n => state.selectedNodeIds.has(n.id));
+    // Just the selected nodes. Frames are not moved.
+    topLevel = Array.from(state.selectedNodeIds)
+      .map(id => state.nodes.find(x => x.id === id))
+      .filter(Boolean)
+      .map(makeNodeObstacle);
   } else {
-    const inAnyFrame = (n) => state.frames.some(f =>
-      n.x >= f.x && n.x <= f.x + f.w && n.y >= f.y && n.y <= f.y + f.h);
-    targetNodes = state.nodes.filter(n => !inAnyFrame(n));
-    if (targetNodes.length > 80) {
-      if (!confirm(`Tidy will rearrange ${targetNodes.length} nodes. Continue?`)) return;
+    const frameObstacles = state.frames.map(makeFrameObstacle);
+    const freeNodeObstacles = state.nodes
+      .filter(n => !inAnyFrame(n))
+      .map(makeNodeObstacle);
+    topLevel = [...frameObstacles, ...freeNodeObstacles];
+  }
+
+  // Bail if there's nothing meaningful to do
+  let pendingPerFrame = 0;
+  if (!hasSelection) {
+    for (const f of state.frames) {
+      const children = state.nodes.filter(n => inFrame(n, f));
+      if (children.length >= 2) pendingPerFrame++;
     }
   }
-  if (targetNodes.length === 0) {
+  if (topLevel.length < 2 && pendingPerFrame === 0) {
     setStatus(hasSelection
-      ? 'Nothing selected to tidy.'
-      : 'Nothing to tidy — every node is inside a frame.');
-    return;
-  }
-  if (targetNodes.length === 1) {
-    setStatus('Only one node — nothing to tidy.');
+      ? 'Select 2 or more nodes to tidy.'
+      : 'Nothing to tidy — fewer than 2 objects.');
     return;
   }
 
   snapshot();
-  const targetIds = new Set(targetNodes.map(n => n.id));
+  let totalMoves = 0;
 
-  // 2) Build adjacency over the target subgraph only
-  const incoming = new Map();
-  const outgoing = new Map();
-  for (const n of targetNodes) { incoming.set(n.id, []); outgoing.set(n.id, []); }
-  for (const e of state.edges) {
-    if (!targetIds.has(e.source) || !targetIds.has(e.target)) continue;
-    outgoing.get(e.source).push(e.target);
-    incoming.get(e.target).push(e.source);
-  }
+  // 1) Resolve overlaps at the top level
+  totalMoves += resolveOverlaps(topLevel);
 
-  // 3) Roots — nodes within the target set that have no incoming edge (within target set)
-  let roots = targetNodes.filter(n => incoming.get(n.id).length === 0);
-  if (roots.length === 0) {
-    const minIn = Math.min(...targetNodes.map(n => incoming.get(n.id).length));
-    roots = targetNodes.filter(n => incoming.get(n.id).length === minIn);
-  }
-  roots.sort((a, b) => {
-    const rank = { start: 0, folder: 1 };
-    return (rank[a.type] ?? 10) - (rank[b.type] ?? 10);
-  });
-
-  // 4) BFS layer assignment with cycle guard
-  const layer = new Map();
-  const updateCount = new Map();
-  const queue = [];
-  for (const r of roots) {
-    layer.set(r.id, 0);
-    updateCount.set(r.id, 1);
-    queue.push(r.id);
-  }
-  const maxUpdates = targetNodes.length;
-  while (queue.length) {
-    const id = queue.shift();
-    const d = layer.get(id);
-    for (const t of outgoing.get(id) || []) {
-      const cur = layer.get(t);
-      if (cur === undefined || cur < d + 1) {
-        const u = (updateCount.get(t) || 0) + 1;
-        if (u > maxUpdates) continue;
-        updateCount.set(t, u);
-        layer.set(t, d + 1);
-        queue.push(t);
+  // 2) Resolve overlaps inside each frame (only when not in selection mode)
+  if (!hasSelection) {
+    for (const f of state.frames) {
+      // Re-scan children using current positions (top-level pass may have moved the frame + its children together)
+      const children = state.nodes.filter(n => inFrame(n, f));
+      if (children.length >= 2) {
+        totalMoves += resolveOverlaps(children.map(makeNodeObstacle));
       }
     }
   }
-  for (const n of targetNodes) if (!layer.has(n.id)) layer.set(n.id, 0);
 
-  // 5) Group + barycentric ordering within each layer
-  const layers = new Map();
-  for (const n of targetNodes) {
-    const l = layer.get(n.id);
-    if (!layers.has(l)) layers.set(l, []);
-    layers.get(l).push(n);
+  if (totalMoves === 0) {
+    setStatus('Already tidy — no overlaps detected.');
+    // Don't bother saving an empty snapshot
+    return;
   }
-  const sortedLayers = Array.from(layers.entries()).sort((a, b) => a[0] - b[0]);
-  const orderInLayer = new Map();
-  sortedLayers.forEach(([l, nodes]) => {
-    if (l === 0) {
-      nodes.forEach((n, i) => orderInLayer.set(n.id, i));
-      return;
-    }
-    const scored = nodes.map(n => {
-      const parents = incoming.get(n.id) || [];
-      const positions = parents.map(p => orderInLayer.get(p)).filter(v => v !== undefined);
-      const avg = positions.length ? positions.reduce((s, v) => s + v, 0) / positions.length : 0;
-      return { n, avg };
-    });
-    scored.sort((a, b) => a.avg - b.avg);
-    scored.forEach((s, i) => orderInLayer.set(s.n.id, i));
-    nodes.length = 0;
-    scored.forEach(s => nodes.push(s.n));
-  });
-
-  // 6) Width-aware placement
-  const H_GUTTER = 40;
-  const V_GUTTER = 60;
-  const sizeOf = new Map();
-  for (const n of targetNodes) sizeOf.set(n.id, nodeSize(n));
-
-  const layerInfo = sortedLayers.map(([l, nodes]) => {
-    let totalW = 0, maxH = 0;
-    for (const n of nodes) {
-      const s = sizeOf.get(n.id);
-      totalW += s.width;
-      if (s.height > maxH) maxH = s.height;
-    }
-    totalW += (nodes.length - 1) * H_GUTTER;
-    return { l, nodes, totalW, maxH };
-  });
-
-  // Center the laid-out block on the target's current centroid so it stays near
-  // where it was (especially useful when only a subset is being tidied)
-  const cx0 = targetNodes.reduce((s, n) => s + n.x, 0) / targetNodes.length;
-  const cy0 = targetNodes.reduce((s, n) => s + n.y, 0) / targetNodes.length;
-  const totalH = layerInfo.reduce((s, info) => s + info.maxH, 0) + (layerInfo.length - 1) * V_GUTTER;
-  let y = cy0 - totalH / 2;
-  for (const info of layerInfo) {
-    const centerY = y + info.maxH / 2;
-    let x = cx0 - info.totalW / 2;
-    for (const n of info.nodes) {
-      const s = sizeOf.get(n.id);
-      n.x = Math.round((x + s.width / 2) / 10) * 10;
-      n.y = Math.round(centerY / 10) * 10;
-      x += s.width + H_GUTTER;
-    }
-    y += info.maxH + V_GUTTER;
-  }
-
-  // 7) Collision-resolve pass — catches edge cases (very wide descriptions etc.)
-  resolveOverlaps(targetNodes, sizeOf);
-
   save();
-  fitToContent();
-  setStatus(`Tidied ${targetNodes.length} node${targetNodes.length===1?'':'s'}.`);
+  render();
+  setStatus(`Tidied — resolved ${totalMoves} overlap${totalMoves===1?'':'s'}.`);
 }
 
-// Iterative push: if two node bounding boxes overlap, nudge the right-most
-// node further right by enough to clear, snapped to 10px grid. Bounded at
-// 20 iterations so it can't run away.
-function resolveOverlaps(nodes, sizeOf) {
-  const maxIter = 20;
-  for (let iter = 0; iter < maxIter; iter++) {
-    let moved = false;
-    for (let i = 0; i < nodes.length; i++) {
-      for (let j = i + 1; j < nodes.length; j++) {
-        const a = nodes[i], b = nodes[j];
-        const sa = sizeOf.get(a.id) || nodeSize(a);
-        const sb = sizeOf.get(b.id) || nodeSize(b);
-        const aL = a.x - sa.width/2, aR = a.x + sa.width/2;
-        const aT = a.y - sa.height/2, aB = a.y + sa.height/2;
-        const bL = b.x - sb.width/2, bR = b.x + sb.width/2;
-        const bT = b.y - sb.height/2, bB = b.y + sb.height/2;
-        const overlapX = Math.min(aR, bR) - Math.max(aL, bL);
-        const overlapY = Math.min(aB, bB) - Math.max(aT, bT);
-        if (overlapX > 0 && overlapY > 0) {
-          const push = Math.ceil((overlapX + 20) / 10) * 10;
-          if (a.x < b.x) b.x += push;
-          else a.x += push;
-          moved = true;
+function makeNodeObstacle(n) {
+  const s = nodeSize(n);
+  return {
+    kind: 'node',
+    ref: n,
+    bbox: { x: n.x - s.width/2, y: n.y - s.height/2, w: s.width, h: s.height },
+    move(dx, dy) {
+      n.x += dx; n.y += dy;
+      this.bbox.x += dx; this.bbox.y += dy;
+    },
+  };
+}
+
+function makeFrameObstacle(f) {
+  // Children = nodes whose center is inside the frame's current bbox
+  const children = state.nodes.filter(n =>
+    n.x >= f.x && n.x <= f.x + f.w && n.y >= f.y && n.y <= f.y + f.h);
+  return {
+    kind: 'frame',
+    ref: f,
+    children,
+    bbox: { x: f.x, y: f.y, w: f.w, h: f.h },
+    move(dx, dy) {
+      f.x += dx; f.y += dy;
+      this.bbox.x += dx; this.bbox.y += dy;
+      for (const c of children) { c.x += dx; c.y += dy; }
+    },
+  };
+}
+
+// Push overlapping obstacles apart, smaller-overlap direction wins (less
+// movement). Snapped to 10px with a 20px padding. Bounded at 50 iterations
+// to prevent runaway cascades.
+function resolveOverlaps(obstacles) {
+  const PADDING = 20;
+  const MAX_ITER = 50;
+  let total = 0;
+  for (let iter = 0; iter < MAX_ITER; iter++) {
+    let any = false;
+    for (let i = 0; i < obstacles.length; i++) {
+      for (let j = i + 1; j < obstacles.length; j++) {
+        const a = obstacles[i].bbox;
+        const b = obstacles[j].bbox;
+        const overlapX = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+        const overlapY = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+        if (overlapX <= 0 || overlapY <= 0) continue;
+        if (overlapX < overlapY) {
+          // Push horizontally — move the right-er one further right
+          const push = Math.ceil((overlapX + PADDING) / 10) * 10;
+          const ac = a.x + a.w / 2;
+          const bc = b.x + b.w / 2;
+          if (ac < bc) obstacles[j].move(push, 0);
+          else obstacles[i].move(push, 0);
+        } else {
+          // Push vertically — move the lower one further down
+          const push = Math.ceil((overlapY + PADDING) / 10) * 10;
+          const ac = a.y + a.h / 2;
+          const bc = b.y + b.h / 2;
+          if (ac < bc) obstacles[j].move(0, push);
+          else obstacles[i].move(0, push);
         }
+        total++;
+        any = true;
       }
     }
-    if (!moved) break;
+    if (!any) break;
   }
+  return total;
 }
 
 function fitToContent(padding = 60) {
