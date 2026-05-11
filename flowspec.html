@@ -1650,6 +1650,7 @@ function renderPanel() {
           <option value="mermaid">Mermaid (bonus)</option>
         </select>
         <button class="btn" id="copy-btn" title="Copy to clipboard">Copy</button>
+        <button class="btn" id="save-spec-btn" title="Save the spec text to a file">Save…</button>
       </div>
       <div class="spec-desc" id="format-desc"></div>
       <pre class="spec-pre" id="output-text"></pre>
@@ -1670,6 +1671,7 @@ function renderPanel() {
         setTimeout(() => { b.textContent = old; }, 1200);
       } catch(e) { alert('Copy failed. Select the text manually.'); }
     });
+    document.getElementById('save-spec-btn').addEventListener('click', saveSpec);
     renderOutput();
     return;
   }
@@ -1881,7 +1883,7 @@ function escapeHtml(s) {
 
 // ---------- Output generation ----------
 const FORMAT_DESC = {
-  markdown: '<strong>Structured Markdown</strong> — best for pasting into Claude as a spec. Clean hierarchy, all nodes and connections enumerated, plus an ASCII tree of the flow.',
+  markdown: '<strong>Structured Markdown</strong> — best for pasting into an LLM as a spec. Clean hierarchy, all nodes and connections enumerated, plus an ASCII tree of the flow.',
   narrative: '<strong>Narrative</strong> — best when the LLM needs the <em>story</em>, not just the structure. Each node described in prose with what it leads to. Good for nuanced flows where intent isn\'t obvious from boxes alone.',
   tree: '<strong>Folder tree (ASCII)</strong> — best for file/folder structures. Builds a <code>tree</code>-style ASCII layout from your folder and file nodes. Connect parent folders to their children; non-folder/file nodes are skipped.',
   json: '<strong>JSON</strong> — best for programmatic use. Feed into scripts, version-control your spec, or ask an LLM to generate code that constructs the same graph. Machine-readable, lossless.',
@@ -2760,6 +2762,56 @@ async function saveFileAs() {
   } catch(e) {
     if (e.name !== 'AbortError') alert('Save As failed: ' + e.message);
   }
+}
+
+// ---------- Spec save ----------
+const SPEC_FORMAT_META = {
+  markdown:  { ext: 'md',   mime: 'text/markdown',  suffix: '.spec',  desc: 'Markdown' },
+  narrative: { ext: 'txt',  mime: 'text/plain',     suffix: '.spec',  desc: 'Plain text' },
+  tree:      { ext: 'txt',  mime: 'text/plain',     suffix: '.tree',  desc: 'Plain text' },
+  json:      { ext: 'json', mime: 'application/json', suffix: '.spec', desc: 'JSON' },
+  mermaid:   { ext: 'mmd',  mime: 'text/plain',     suffix: '',       desc: 'Mermaid' },
+};
+
+async function saveSpec() {
+  const out = document.getElementById('output-text');
+  if (!out) return;
+  const text = out.textContent || '';
+  const meta = SPEC_FORMAT_META[state.format] || SPEC_FORMAT_META.markdown;
+  const base = sanitizeForFilename(state.title);
+  const suggestedName = base + meta.suffix + '.' + meta.ext;
+
+  if (FS_SUPPORTED) {
+    try {
+      const options = {
+        suggestedName,
+        types: [{
+          description: meta.desc + ' file',
+          accept: { [meta.mime]: ['.' + meta.ext] },
+        }],
+      };
+      // If this project is linked to a .flowspec.json, open the dialog next to it
+      const linkedHandle = await getLinkedHandle();
+      if (linkedHandle) options.startIn = linkedHandle;
+      const handle = await window.showSaveFilePicker(options);
+      const writable = await handle.createWritable();
+      await writable.write(text);
+      await writable.close();
+      setStatus('Saved spec: ' + handle.name);
+    } catch(e) {
+      if (e.name !== 'AbortError') alert('Save failed: ' + e.message);
+    }
+    return;
+  }
+  // Fallback: download
+  const blob = new Blob([text], { type: meta.mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = suggestedName;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  setStatus('Downloaded: ' + suggestedName);
 }
 
 // ---------- Export menu ----------
