@@ -1201,7 +1201,10 @@
   /* "Create new" section at the top of the Projects modal — surfaces templates */
   .projects-new-section { margin-bottom: 14px; }
   .projects-new-buttons {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    display: grid;
+    /* Auto-fit so 2 or 3 cards both look right; wraps to single column when narrow */
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 8px;
   }
   .projects-new-card {
     display: flex; align-items: center; gap: 12px;
@@ -1309,6 +1312,7 @@
     <button class="btn icon" id="theme-toggle-btn" title="Toggle dark / light theme">🌙</button>
     <button class="btn desktop-only" id="projects-btn" title="Manage projects — switch, create, rename, delete">📁 Projects</button>
     <button class="btn desktop-only" id="open-btn" title="Open a .flowspec.json file from disk (Cmd/Ctrl+O)">📂 Open…</button>
+    <button class="btn desktop-only" id="import-json-btn" title="Paste a .flowspec.json payload from your clipboard — no file needed">📋 Import…</button>
     <button class="btn desktop-only" id="save-btn" title="Save to linked file, or pick a location if none (Cmd/Ctrl+S)">💾 Save</button>
     <button class="btn desktop-only" id="save-as-btn" title="Save a copy to a new file (Cmd/Ctrl+Shift+S)">Save As…</button>
     <div class="dropdown desktop-only" id="edit-dropdown">
@@ -1339,6 +1343,7 @@
         <button class="dropdown-item" data-more="projects">📁 Projects…</button>
         <hr style="border:none; border-top:1px solid var(--border); margin:4px 0;">
         <button class="dropdown-item" data-more="open">📂 Open…</button>
+        <button class="dropdown-item" data-more="import">📋 Import JSON…</button>
         <button class="dropdown-item" data-more="save">💾 Save</button>
         <button class="dropdown-item" data-more="save-as">💾 Save As…</button>
         <hr style="border:none; border-top:1px solid var(--border); margin:4px 0;">
@@ -1513,6 +1518,36 @@
   </div>
 </div>
 
+<!-- Import JSON modal — paste a .flowspec.json payload from clipboard.
+     Single-purpose; opens as a new project by default (matching AI flow). -->
+<div class="modal-backdrop" id="import-json-modal">
+  <div class="modal" style="width: 560px;">
+    <div class="modal-header">
+      <h2>📋 Import JSON</h2>
+      <button class="modal-close" id="import-json-close" title="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <p style="margin: 0 0 12px; font-size: 12.5px; color: var(--text-muted); line-height: 1.45;">
+        Paste a <code>.flowspec.json</code> payload below — useful when someone shared one with you in a chat or email and you don't want to save it as a file first. Markdown code fences (<code>```json</code>) are stripped automatically.
+      </p>
+      <textarea id="import-json-text" rows="10" placeholder="Paste the JSON here…" style="width:100%; font-family: ui-monospace, monospace; font-size: 12px;"></textarea>
+      <div style="display:flex; gap:12px; margin-top: 8px; flex-wrap: wrap; align-items: center;">
+        <label class="fr-check" style="margin:0;">
+          <input type="checkbox" id="import-json-replace">
+          Replace current project (instead of opening new)
+        </label>
+        <label class="fr-check" style="margin:0;" title="Run the overlap-resolver after load — pushes tightly-clustered nodes apart without re-arranging the structure. Off by default so the imported layout comes through unchanged.">
+          <input type="checkbox" id="import-json-tidy">
+          Auto-tidy after load
+        </label>
+        <span style="flex:1"></span>
+        <button class="btn primary" id="import-json-load-btn">✨ Load</button>
+      </div>
+      <div id="import-json-status" style="margin-top: 8px; font-size: 12px; color: var(--text-muted);"></div>
+    </div>
+  </div>
+</div>
+
 <div class="modal-backdrop" id="findreplace-modal">
   <div class="modal" style="width: 440px;">
     <div class="modal-header">
@@ -1574,6 +1609,13 @@
                 <div class="projects-new-desc">Login flow, data pipeline, and 3 more</div>
               </div>
             </button>
+            <button class="projects-new-card" id="from-paste-btn">
+              <div class="projects-new-icon">📥</div>
+              <div class="projects-new-text">
+                <div class="projects-new-title">From JSON paste…</div>
+                <div class="projects-new-desc">Paste a <code>.flowspec.json</code> from your clipboard</div>
+              </div>
+            </button>
           </div>
         </div>
         <div class="projects-section-head">Your projects</div>
@@ -1598,7 +1640,7 @@
 // =============================================================
 // FlowSpec — visual flowchart builder with LLM-friendly text out
 // =============================================================
-const FLOWSPEC_VERSION = '0.18.5';
+const FLOWSPEC_VERSION = '0.18.6';
 
 const NODE_TYPES = {
   start:    { label: 'Start',    color: '#c0dd97', stroke: '#3b6d11', text: '#173404', shape: 'pill',    hint: 'Where the flow begins. Typically one per chart.' },
@@ -4872,12 +4914,13 @@ function renderPanel() {
       </details>
 
       <details class="help-section">
-        <summary>Open, Save, Save As</summary>
+        <summary>Open, Save, Save As, Import</summary>
         <div class="help-body">
           <p>Each project can be linked to a <code>.flowspec.json</code> file on disk.</p>
           <p><strong>📂 Open…</strong> (<span class="kbd">Cmd/Ctrl</span>+<span class="kbd">O</span>) picks a file and remembers it for that project.</p>
           <p><strong>💾 Save</strong> (<span class="kbd">Cmd/Ctrl</span>+<span class="kbd">S</span>) writes back to the linked file, or asks where to save if there's no link yet.</p>
           <p><strong>Save As…</strong> (<span class="kbd">Cmd/Ctrl</span>+<span class="kbd">Shift</span>+<span class="kbd">S</span>) picks a new location and re-links.</p>
+          <p><strong>📋 Import…</strong> opens a paste dialog — drop a <code>.flowspec.json</code> payload from your clipboard and load it without saving to disk first. Useful for JSON shared in chat / email, or from a previous AI conversation. Reachable from the header, the Projects modal's "From JSON paste" card, or <span class="kbd">⋮ More</span> on mobile. Markdown code fences (<code>\`\`\`json</code>) are stripped automatically.</p>
           <p>A <span class="kbd">📎 filename</span> chip next to the title shows the link; click <span class="kbd">×</span> to unlink. A <span class="kbd">•</span> means you have unsaved changes.</p>
           <p><em>Chrome / Edge:</em> silent in-place save. <em>Firefox / Safari:</em> falls back to download dialogs (no FS Access API).</p>
         </div>
@@ -5317,8 +5360,8 @@ function escapeHtml(s) {
 
 // ---------- Output generation ----------
 const FORMAT_DESC = {
-  markdown: '<strong>Structured Markdown</strong> — best for pasting into an LLM as a spec. Clean hierarchy, all nodes and connections enumerated, plus an ASCII tree of the flow.',
-  narrative: '<strong>Narrative</strong> — best when the LLM needs the <em>story</em>, not just the structure. Each node described in prose with what it leads to. Good for nuanced flows where intent isn\'t obvious from boxes alone.',
+  markdown: '<strong>Structured Markdown</strong> — best for documentation or pasting into an LLM as a spec. Clean hierarchy, all nodes and connections enumerated, plus an ASCII tree of the flow.',
+  narrative: '<strong>Narrative</strong> — best when the reader needs the <em>story</em>, not just the structure. Each node described in prose with what it leads to. Good for nuanced flows where intent isn\'t obvious from boxes alone.',
   tree: '<strong>Folder tree (ASCII)</strong> — best for file/folder structures. Builds a <code>tree</code>-style ASCII layout from your folder and file nodes. Connect parent folders to their children; non-folder/file nodes are skipped.',
   json: '<strong>JSON</strong> — best for programmatic use. Feed into scripts, version-control your spec, or ask an LLM to generate code that constructs the same graph. Machine-readable, lossless.',
   mermaid: '<strong>Mermaid</strong> — best when you want the diagram <em>rendered elsewhere</em>. Paste into a GitHub README, Notion page, or any Mermaid renderer to display the chart visually.',
@@ -5932,20 +5975,24 @@ function aiSavePrompt() {
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-async function aiLoadResponse() {
-  const text = document.getElementById('ai-response-text').value;
-  const statusEl = document.getElementById('ai-load-status');
-  statusEl.style.color = 'var(--text-muted)';
-  statusEl.textContent = '';
-  let data;
-  try {
-    data = parseLlmResponse(text);
-  } catch(e) {
-    statusEl.style.color = 'var(--danger-text)';
-    statusEl.textContent = '❌ ' + e.message;
-    return;
-  }
-  const replaceCurrent = document.getElementById('ai-replace-current').checked;
+// Shared loader for any "paste JSON text → load it as a project" flow.
+// Used by both the Generate-with-AI modal (`aiLoadResponse`) and the
+// standalone Import JSON modal (`importJsonLoad`). Throws on parse error
+// so each caller can render its own error UI; returns a status string on
+// success that the caller can display.
+//
+// opts:
+//   replaceCurrent  — true: overwrite the current project; false: open new
+//   autoTidyAfter   — true: run autoLayout() after load to push overlaps apart
+//   defaultTitle    — fallback title when the JSON doesn't include one
+//   defaultFilename — used as the new project's filename when opening as new
+async function loadFromJsonText(text, opts = {}) {
+  const data = parseLlmResponse(text);
+  const replaceCurrent = !!opts.replaceCurrent;
+  const autoTidyAfter  = !!opts.autoTidyAfter;
+  const defaultTitle    = opts.defaultTitle    || 'Imported';
+  const defaultFilename = opts.defaultFilename || 'imported.flowspec.json';
+
   // Normalize nextId so future ids don't collide with imported ones
   let maxId = 0;
   for (const arr of [data.nodes || [], data.edges || [], data.frames || []]) {
@@ -5956,13 +6003,9 @@ async function aiLoadResponse() {
   }
   if (!data.nextId || data.nextId <= maxId) data.nextId = maxId + 1;
 
-  // Whether to run the overlap-resolver after load. Off by default so the
-  // LLM's layout intent comes through unchanged unless the user opts in.
-  const autoTidyAfter = document.getElementById('ai-auto-tidy').checked;
-
   if (replaceCurrent) {
     snapshot();
-    state.title = data.title || state.title || 'Imported from AI';
+    state.title = data.title || state.title || defaultTitle;
     state.nodes = data.nodes || [];
     state.edges = data.edges || [];
     state.frames = data.frames || [];
@@ -5970,22 +6013,45 @@ async function aiLoadResponse() {
     state.pan = { x: 0, y: 0 };
     state.zoom = 1;
     document.getElementById('title-input').value = state.title;
-    // If positions look like all zeros (LLM skipped them), auto-layout no
-    // matter what — there's nothing to preserve.
+    // If positions look like all zeros (sender skipped them), auto-layout
+    // regardless — there's nothing to preserve.
     const allZero = state.nodes.length > 0 && state.nodes.every(n => (!n.x || n.x === 0) && (!n.y || n.y === 0));
     save();
     if (allZero || autoTidyAfter) autoLayout();
     fitToContent();
     render();
   } else {
-    await applyOpenedFile(data, (data.title || 'AI generated') + '.flowspec.json', null);
+    await applyOpenedFile(data, (data.title || defaultTitle) + '.flowspec.json', null);
     const allZero = state.nodes.length > 0 && state.nodes.every(n => (!n.x || n.x === 0) && (!n.y || n.y === 0));
     if (allZero || autoTidyAfter) autoLayout();
     fitToContent();
   }
   const tidyNote = autoTidyAfter ? ' (auto-tidied)' : '';
+  const nodeCount = (data.nodes || []).length;
+  const edgeCount = (data.edges || []).length;
+  return `✓ Loaded ${nodeCount} node${nodeCount===1?'':'s'} and ${edgeCount} connection${edgeCount===1?'':'s'}${tidyNote}.`;
+}
+
+async function aiLoadResponse() {
+  const text = document.getElementById('ai-response-text').value;
+  const statusEl = document.getElementById('ai-load-status');
+  statusEl.style.color = 'var(--text-muted)';
+  statusEl.textContent = '';
+  let msg;
+  try {
+    msg = await loadFromJsonText(text, {
+      replaceCurrent: document.getElementById('ai-replace-current').checked,
+      autoTidyAfter:  document.getElementById('ai-auto-tidy').checked,
+      defaultTitle:    'AI generated',
+      defaultFilename: 'AI generated.flowspec.json',
+    });
+  } catch(e) {
+    statusEl.style.color = 'var(--danger-text)';
+    statusEl.textContent = '❌ ' + e.message;
+    return;
+  }
   statusEl.style.color = 'var(--accent)';
-  statusEl.textContent = `✓ Loaded ${data.nodes.length} node${data.nodes.length===1?'':'s'} and ${(data.edges||[]).length} connection${(data.edges||[]).length===1?'':'s'}${tidyNote}.`;
+  statusEl.textContent = msg;
   // Auto-close after a moment so the user can verify the status, then see their flow
   setTimeout(() => closeAiModal(), 900);
 }
@@ -5998,6 +6064,52 @@ document.getElementById('ai-include-current').addEventListener('change', refresh
 document.getElementById('ai-copy-btn').addEventListener('click', aiCopyPrompt);
 document.getElementById('ai-save-prompt-btn').addEventListener('click', aiSavePrompt);
 document.getElementById('ai-load-btn').addEventListener('click', aiLoadResponse);
+
+// ---------- Import JSON modal ----------
+// Standalone "paste JSON to import" dialog. Reachable from the header
+// (📋 Import button), the Projects modal (third "Create new" card), and
+// the mobile More menu. All three entry points open this same dialog.
+function openImportJsonModal() {
+  const m = document.getElementById('import-json-modal');
+  m.classList.add('open');
+  // Reset transient UI on each open so the user gets a clean slate
+  document.getElementById('import-json-status').textContent = '';
+  document.getElementById('import-json-text').value = '';
+  document.getElementById('import-json-replace').checked = false;
+  document.getElementById('import-json-tidy').checked = false;
+  // Focus the paste field so Cmd/Ctrl+V works immediately
+  setTimeout(() => document.getElementById('import-json-text').focus(), 50);
+}
+function closeImportJsonModal() {
+  document.getElementById('import-json-modal').classList.remove('open');
+}
+async function importJsonLoad() {
+  const text = document.getElementById('import-json-text').value;
+  const statusEl = document.getElementById('import-json-status');
+  statusEl.style.color = 'var(--text-muted)';
+  statusEl.textContent = '';
+  let msg;
+  try {
+    msg = await loadFromJsonText(text, {
+      replaceCurrent: document.getElementById('import-json-replace').checked,
+      autoTidyAfter:  document.getElementById('import-json-tidy').checked,
+      defaultTitle:    'Imported',
+      defaultFilename: 'imported.flowspec.json',
+    });
+  } catch(e) {
+    statusEl.style.color = 'var(--danger-text)';
+    statusEl.textContent = '❌ ' + e.message;
+    return;
+  }
+  statusEl.style.color = 'var(--accent)';
+  statusEl.textContent = msg;
+  setTimeout(() => closeImportJsonModal(), 900);
+}
+document.getElementById('import-json-close').addEventListener('click', closeImportJsonModal);
+document.getElementById('import-json-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'import-json-modal') closeImportJsonModal();
+});
+document.getElementById('import-json-load-btn').addEventListener('click', importJsonLoad);
 
 // ---------- Find & Replace ----------
 function openFindReplace() {
@@ -6881,6 +6993,11 @@ function renderTemplateGallery() {
   }
 }
 document.getElementById('show-templates-btn').addEventListener('click', () => showProjectsModalView('templates'));
+// Third "Create new" card — open the standalone Import JSON dialog
+document.getElementById('from-paste-btn').addEventListener('click', () => {
+  closeProjectsModal();
+  openImportJsonModal();
+});
 document.getElementById('back-to-projects-btn').addEventListener('click', () => showProjectsModalView('projects'));
 document.getElementById('projects-modal').addEventListener('click', (e) => {
   if (e.target.id === 'projects-modal') closeProjectsModal();
@@ -7264,6 +7381,7 @@ document.getElementById('linked-unlink').addEventListener('click', async () => {
 document.getElementById('open-btn').addEventListener('click', openFile);
 document.getElementById('save-btn').addEventListener('click', saveFile);
 document.getElementById('save-as-btn').addEventListener('click', saveFileAs);
+document.getElementById('import-json-btn').addEventListener('click', openImportJsonModal);
 
 // Open-file fallback for non-FS-API browsers
 document.getElementById('open-file-fallback').addEventListener('change', async (e) => {
@@ -7356,6 +7474,7 @@ document.querySelectorAll('#more-menu .dropdown-item').forEach(item => {
     switch (what) {
       case 'projects': openProjectsModal(); break;
       case 'open': openFile(); break;
+      case 'import': openImportJsonModal(); break;
       case 'save': saveFile(); break;
       case 'save-as': saveFileAs(); break;
       case 'undo': undo(); break;

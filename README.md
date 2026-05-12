@@ -45,6 +45,7 @@ Most diagramming tools (Excalidraw, draw.io, Whimsical) export images or proprie
 
 ### Files
 - Each project can be **linked to a `.flowspec.json` file on disk** — Open, Save, Save As behave like a real document editor (Cmd/Ctrl + O / S / Shift+S)
+- **📋 Import JSON** — paste a `.flowspec.json` payload directly from your clipboard, no file needed. Useful when someone shared a flow with you in a chat or email, or when you have JSON from a previous AI conversation. Reachable from the header button, the Projects modal's third "Create new" card, or the mobile `⋮ More` menu
 - **Linked-file chip** next to the title shows the link; **• dirty indicator** when in-memory differs from disk
 - **Auto-save to localStorage** runs in the background — a crash-safety net independent of disk saves
 - Multi-project workspace; switch between projects without losing any state

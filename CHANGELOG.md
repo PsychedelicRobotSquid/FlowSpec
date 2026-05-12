@@ -2,6 +2,20 @@
 
 All notable changes to FlowSpec. Format roughly follows [Keep a Changelog](https://keepachangelog.com/). Versioning is loose pre-1.0 — minor bumps for feature batches, patch bumps for fixes.
 
+## [0.18.6] — 2026-05-12
+
+### Added
+- **📋 Import JSON** — paste a `.flowspec.json` payload directly from your clipboard, no file step required. Useful for JSON shared in chat / email, JSON from a previous AI conversation, or when you just want to round-trip a project without writing it to disk first. Reachable from three places (all open the same dialog):
+  1. **Header `📋 Import…` button** — sits next to `📂 Open…`. One click, fast path
+  2. **Projects modal "From JSON paste…" card** — third "Create new" card alongside Blank and Template, for the discoverable "I want a new project from this JSON" mental model
+  3. **Mobile `⋮ More` menu** — entry between Open and Save, for the touch fallback
+- The dialog itself: single textarea + two checkboxes (`Replace current project` / `Auto-tidy after load`, both off by default — same defaults as the Generate-with-AI flow) + a `✨ Load` button. Markdown code fences are stripped automatically. The shared `loadFromJsonText()` helper means any future fix to the parse/load pipeline lands in both the Generate and Import paths.
+
+### Changed
+- **Markdown / Narrative format descriptions in the Spec tab** no longer single out LLMs as the only audience:
+  - Markdown: *"best for pasting into an LLM as a spec"* → *"best for documentation or pasting into an LLM as a spec"* (markdown is also great for docs / READMEs / Notion).
+  - Narrative: *"best when the LLM needs the story"* → *"best when the reader needs the story"* (narrative reads well for any human reader, not just LLMs).
+
 ## [0.18.5] — 2026-05-12
 
 ### Changed
