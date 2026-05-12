@@ -2,6 +2,33 @@
 
 All notable changes to FlowSpec. Format roughly follows [Keep a Changelog](https://keepachangelog.com/). Versioning is loose pre-1.0 — minor bumps for feature batches, patch bumps for fixes.
 
+## [0.18.0] — 2026-05-11
+
+### Added
+- **Header rework** — new order, less stuff hidden behind menus:
+  - `^` &nbsp;·&nbsp; **⚠ Errors** &nbsp;·&nbsp; 🌙 &nbsp;·&nbsp; Projects &nbsp;·&nbsp; Open &nbsp;·&nbsp; Save &nbsp;·&nbsp; Save As &nbsp;·&nbsp; **Edit ▾** &nbsp;·&nbsp; Export ▾ &nbsp;·&nbsp; Spec &nbsp;·&nbsp; **🤖 Generate**
+  - Errors badge moved out of the secondary toolbar so it stays visible when the toolbar is collapsed
+  - New **Edit ▾** dropdown — Undo, Redo, Select all, Find, Find & Replace (no longer hidden behind `⋮ More`)
+  - **🤖 Generate** promoted to its own button (was inside `⋮ More`)
+  - Mobile keeps a `⋮ More` overflow menu with the same items
+- **Three-tier flow-issue suppression** — the validator was opt-out before; now you can mute at any granularity:
+  1. **Per-warning** — click `×` on a row in the Flow issues panel (existing)
+  2. **Per-node** — Properties → "Suppress warnings for this node" checkbox, or right-click a node → "Suppress warnings". Stored on the node, persists in the file
+  3. **Globally** — toggle "Hide all flow validation" at the top of the Flow issues panel, or right-click the ⚠ badge. Stored per-project, persists in the file. When on, the badge fades to "⚠ off", per-node `!` markers hide, and the panel shows a clear "validation hidden" state with the toggle right there
+- **Validation help & catalog** — a new **Validation & errors** section in the Help tab and the README documents every warning type (what it means / why you might want it / why you might not / how to silence it). The Flow issues panel has a **Learn more about validation →** link at the bottom that jumps straight there
+- **From template…** surfaced — the Projects modal now shows two prominent **+ New blank project** / **+ From template…** cards at the top of the panel (was a small button in the footer). Templates is one click from the header instead of click-Projects-then-find-the-button
+- **Double-click / double-tap → Properties** — double-click a node or a frame's border to open Properties and focus the label / title for immediate editing. Edges keep their existing "tap-selected-edge to drop a bend" behavior unchanged
+- **Frame outline is draggable on all 4 sides** — the entire perimeter (top title strip + slim left / right / bottom borders) is now the drag handle, not just the top. Grab any side to move the frame. The body of the frame stays click-through, so marquee-select inside large frames still works
+- **Frame side-resize anchors** — frames now have 8 resize handles when selected (4 corners + 4 side midpoints). Side handles resize one dimension only, anchored to the opposite edge
+
+### Changed
+- Internal: `state.issuesHidden` (per-project), `node.suppressWarnings` (per-node) — both round-trip in `.flowspec.json`
+- Internal: `attachFrameHandlers` is now wired to 4 perimeter strips per frame instead of one title bar
+- Internal: side resize handlers added to the existing `state.frameDrag.anchor` switch (`n` / `s` / `e` / `w`)
+
+### Fixed
+- The error indicator no longer disappears when you collapse the toolbar (`^`)
+
 ## [0.17.1] — 2026-05-11
 
 ### Fixed

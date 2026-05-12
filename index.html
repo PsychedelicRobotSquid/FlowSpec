@@ -160,7 +160,7 @@
   }
   .dropdown.open .dropdown-menu { display: block; }
   .dropdown-item {
-    display: block; width: 100%; text-align: left;
+    display: flex; align-items: center; width: 100%; text-align: left;
     padding: 7px 10px; font-size: 13px;
     background: none; border: none;
     color: var(--text); cursor: pointer;
@@ -168,6 +168,12 @@
     font-family: inherit;
   }
   .dropdown-item:hover { background: var(--hover-bg); }
+  .dropdown-item .kbd-hint {
+    margin-left: auto; padding-left: 18px;
+    font-size: 11px; color: var(--text-faint);
+    font-family: ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
+    white-space: nowrap;
+  }
 
   /* Context menu (right-click / long-press) */
   .context-menu {
@@ -445,6 +451,18 @@
     color: var(--text-muted); margin-bottom: 4px;
     text-transform: uppercase; letter-spacing: 0.04em;
   }
+  /* Inline checkbox row used inside .field for toggles like "Suppress warnings" */
+  .field-toggle {
+    display: flex !important; align-items: center; gap: 8px;
+    text-transform: none !important; letter-spacing: 0 !important;
+    font-size: 13px !important; font-weight: 400 !important;
+    color: var(--text) !important;
+    cursor: pointer; user-select: none;
+  }
+  .field-toggle input[type="checkbox"] {
+    width: auto !important; margin: 0; padding: 0;
+    cursor: pointer; flex: 0 0 auto;
+  }
   .field input, .field select, .field textarea {
     width: 100%; padding: 7px 10px;
     border: 1px solid var(--border); border-radius: 6px;
@@ -650,6 +668,7 @@
   #issues-btn[data-severity="error"] { color: #e07b5b; border-color: rgba(224,123,91,0.4); }
   #issues-btn[data-severity="warning"] { color: #f0c75c; border-color: rgba(240,199,92,0.4); }
   #issues-btn[data-severity="info"] { color: var(--text-muted); }
+  #issues-btn[data-severity="muted"] { color: var(--text-faint); opacity: 0.65; }
   /* Floating issues panel */
   .issues-panel {
     position: fixed; top: 100px; right: 16px;
@@ -707,6 +726,33 @@
     padding: 24px 16px; text-align: center;
     color: var(--text-faint); font-size: 13px;
   }
+  /* Global "Hide all flow validation" toggle at the top of the issues panel */
+  .issues-global-toggle {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px; margin-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px; color: var(--text-muted);
+    cursor: pointer; user-select: none;
+  }
+  .issues-global-toggle input[type="checkbox"] { margin: 0; cursor: pointer; }
+  .issues-global-toggle .issues-toggle-help {
+    margin-left: auto;
+    width: 16px; height: 16px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 50%; border: 1px solid var(--border);
+    font-size: 10px; color: var(--text-faint);
+    cursor: help;
+  }
+  .issues-global-toggle:hover { color: var(--text); }
+  /* Footer link "Learn more about validation" inside the issues panel */
+  .issues-learn-more {
+    padding: 8px 12px 4px;
+    border-top: 1px solid var(--border);
+    margin-top: 8px;
+    text-align: center;
+    font-size: 11.5px;
+  }
+  .issues-learn-more .link-btn { font-size: 11.5px; }
   .issues-section-head {
     padding: 8px 12px 4px;
     font-size: 11px; font-weight: 500; color: var(--text-faint);
@@ -884,6 +930,13 @@
   .frame-titlebar {
     cursor: move;
   }
+  /* The 4 perimeter strips that form the draggable outline. Body stays
+     pointer-events: none so marquee-select still works inside frames. */
+  .frame-strip {
+    cursor: move;
+    transition: opacity 0.1s;
+  }
+  .frame-strip.selected { opacity: 1; }
   .frame-title {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-size: 12px;
@@ -897,7 +950,11 @@
     stroke-width: 1.5;
     cursor: nwse-resize;
   }
-  .frame-corner.ne, .frame-corner.sw { cursor: nesw-resize; }
+  /* Per-anchor cursors for the 8 resize handles (4 corners + 4 sides) */
+  .frame-corner.anchor-nw, .frame-corner.anchor-se { cursor: nwse-resize; }
+  .frame-corner.anchor-ne, .frame-corner.anchor-sw { cursor: nesw-resize; }
+  .frame-corner.anchor-n,  .frame-corner.anchor-s  { cursor: ns-resize; }
+  .frame-corner.anchor-w,  .frame-corner.anchor-e  { cursor: ew-resize; }
   /* Faint dashed outline on nodes that belong to a frame — visual cue for
      "this node is part of that frame's group" */
   .frame-child-outline {
@@ -1086,6 +1143,58 @@
     padding: 32px 16px; text-align: center;
     color: var(--text-faint); font-size: 13px;
   }
+  /* "Create new" section at the top of the Projects modal — surfaces templates */
+  .projects-new-section { margin-bottom: 14px; }
+  .projects-new-buttons {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+  }
+  .projects-new-card {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 14px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    text-align: left;
+    font-family: inherit;
+    color: var(--text);
+    transition: background 0.1s, border-color 0.1s;
+  }
+  .projects-new-card:hover {
+    background: var(--hover-bg);
+    border-color: var(--text-faint);
+  }
+  .projects-new-card.primary {
+    border-color: var(--accent);
+  }
+  .projects-new-card.primary:hover {
+    background: var(--accent);
+    color: #1a1a18;
+  }
+  .projects-new-card.primary:hover .projects-new-desc { color: rgba(0,0,0,0.65); }
+  .projects-new-icon {
+    width: 32px; height: 32px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    background: var(--surface-3);
+    border-radius: 6px;
+    flex: 0 0 auto;
+  }
+  .projects-new-text { min-width: 0; }
+  .projects-new-title {
+    font-size: 13px; font-weight: 600; margin-bottom: 2px;
+  }
+  .projects-new-desc {
+    font-size: 11.5px; color: var(--text-muted); line-height: 1.3;
+  }
+  .projects-section-head {
+    padding: 4px 8px; margin-top: 4px;
+    font-size: 11px; font-weight: 500; color: var(--text-faint);
+    text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  @media (max-width: 600px) {
+    .projects-new-buttons { grid-template-columns: 1fr; }
+  }
   /* Template gallery (shown inside the Projects modal) */
   .templates-head {
     display: flex; flex-direction: column; gap: 4px;
@@ -1139,13 +1248,25 @@
     </div>
   </div>
   <div class="actions">
+    <!-- Order (v0.18): chrome → status → workspace → file ops → edit → export → output -->
     <button class="btn icon" id="tools-toggle-btn" title="Show / hide the toolbar">⌃</button>
+    <button class="btn icon" id="issues-btn" title="Show flow issues" style="display:none;">⚠ 0</button>
     <button class="btn icon" id="theme-toggle-btn" title="Toggle dark / light theme">🌙</button>
-    <button class="btn desktop-only" id="output-toggle-btn" title="Open the Spec output tab">📄 Spec</button>
     <button class="btn desktop-only" id="projects-btn" title="Manage projects — switch, create, rename, delete">📁 Projects</button>
     <button class="btn desktop-only" id="open-btn" title="Open a .flowspec.json file from disk (Cmd/Ctrl+O)">📂 Open…</button>
     <button class="btn desktop-only" id="save-btn" title="Save to linked file, or pick a location if none (Cmd/Ctrl+S)">💾 Save</button>
     <button class="btn desktop-only" id="save-as-btn" title="Save a copy to a new file (Cmd/Ctrl+Shift+S)">Save As…</button>
+    <div class="dropdown desktop-only" id="edit-dropdown">
+      <button class="btn" id="edit-menu-btn" title="Edit actions — undo, find, select all">✎ Edit ▾</button>
+      <div class="dropdown-menu" id="edit-menu">
+        <button class="dropdown-item" data-edit="undo">↶ Undo <span class="kbd-hint">Ctrl/⌘ Z</span></button>
+        <button class="dropdown-item" data-edit="redo">↷ Redo <span class="kbd-hint">Ctrl/⌘ ⇧ Z</span></button>
+        <hr style="border:none; border-top:1px solid var(--border); margin:4px 0;">
+        <button class="dropdown-item" data-edit="select-all">Select all <span class="kbd-hint">Ctrl/⌘ A</span></button>
+        <button class="dropdown-item" data-edit="find">🔎 Find… <span class="kbd-hint">Ctrl/⌘ F</span></button>
+        <button class="dropdown-item" data-edit="find-replace">🔎 Find &amp; Replace… <span class="kbd-hint">Ctrl H</span></button>
+      </div>
+    </div>
     <div class="dropdown desktop-only" id="export-dropdown">
       <button class="btn" id="export-menu-btn" title="Export to another format">⤓ Export ▾</button>
       <div class="dropdown-menu" id="export-menu">
@@ -1154,20 +1275,23 @@
         <button class="dropdown-item" data-export="spec">Spec text (open tab)</button>
       </div>
     </div>
-    <div class="dropdown" id="more-dropdown">
+    <button class="btn desktop-only" id="output-toggle-btn" title="Open the Spec output tab">📄 Spec</button>
+    <button class="btn desktop-only" id="ai-btn" title="Generate a flow from a description using any LLM">🤖 Generate</button>
+    <!-- More menu — mobile-only fallback for buttons hidden by .desktop-only -->
+    <div class="dropdown mobile-only" id="more-dropdown">
       <button class="btn" id="more-menu-btn" title="More actions">⋮ More</button>
       <div class="dropdown-menu" id="more-menu">
         <button class="dropdown-item" data-more="ai">🤖 Generate with AI…</button>
         <button class="dropdown-item" data-more="find-replace">🔎 Find &amp; Replace…</button>
-        <hr class="mobile-only" style="border:none; border-top:1px solid var(--border); margin:4px 0;">
-        <button class="dropdown-item mobile-only" data-more="spec">📄 Spec tab</button>
-        <button class="dropdown-item mobile-only" data-more="projects">📁 Projects…</button>
-        <button class="dropdown-item mobile-only" data-more="open">📂 Open…</button>
-        <button class="dropdown-item mobile-only" data-more="save">💾 Save</button>
-        <button class="dropdown-item mobile-only" data-more="save-as">💾 Save As…</button>
-        <hr class="mobile-only" style="border:none; border-top:1px solid var(--border); margin:4px 0;">
-        <button class="dropdown-item mobile-only" data-more="export-json">⤓ JSON copy</button>
-        <button class="dropdown-item mobile-only" data-more="export-png">🖼 PNG image</button>
+        <hr style="border:none; border-top:1px solid var(--border); margin:4px 0;">
+        <button class="dropdown-item" data-more="spec">📄 Spec tab</button>
+        <button class="dropdown-item" data-more="projects">📁 Projects…</button>
+        <button class="dropdown-item" data-more="open">📂 Open…</button>
+        <button class="dropdown-item" data-more="save">💾 Save</button>
+        <button class="dropdown-item" data-more="save-as">💾 Save As…</button>
+        <hr style="border:none; border-top:1px solid var(--border); margin:4px 0;">
+        <button class="dropdown-item" data-more="export-json">⤓ JSON copy</button>
+        <button class="dropdown-item" data-more="export-png">🖼 PNG image</button>
       </div>
     </div>
     <input type="file" id="open-file-fallback" style="display:none" accept="application/json,.json">
@@ -1212,7 +1336,6 @@
     <button class="btn icon" id="zoom-out-btn" title="Zoom out (Z + scroll, or Ctrl + scroll)">−</button>
     <span class="zoom-display" id="zoom-display" title="Current zoom — click to reset to 100%">100%</span>
     <button class="btn icon" id="zoom-in-btn" title="Zoom in (Z + scroll, or Ctrl + scroll)">+</button>
-    <button class="btn icon" id="issues-btn" title="Show flow issues" style="display:none;">⚠ 0</button>
     <button class="btn danger icon" id="delete-btn" title="Delete selected (Del)" disabled>🗑<span class="btn-label"> Delete</span></button>
   </div>
   <div class="group" style="margin-left:auto; border-right:none;">
@@ -1370,8 +1493,28 @@
     <div class="modal-body">
       <!-- Projects view (default) -->
       <div id="projects-view">
-        <p style="margin:6px 8px 12px; font-size:12px; color:var(--text-muted); line-height:1.45;">
-          Projects live in this browser. Each one can be linked to a <code>.flowspec.json</code> file on disk via <strong>Save</strong> / <strong>Open</strong>.
+        <!-- "Create new" section, prominent at the top — surfaces templates one click in -->
+        <div class="projects-new-section">
+          <div class="projects-new-buttons">
+            <button class="projects-new-card" id="new-blank-btn">
+              <div class="projects-new-icon">+</div>
+              <div class="projects-new-text">
+                <div class="projects-new-title">New blank project</div>
+                <div class="projects-new-desc">Start with an empty canvas</div>
+              </div>
+            </button>
+            <button class="projects-new-card primary" id="show-templates-btn">
+              <div class="projects-new-icon">📋</div>
+              <div class="projects-new-text">
+                <div class="projects-new-title">From template…</div>
+                <div class="projects-new-desc">Login flow, data pipeline, and 3 more</div>
+              </div>
+            </button>
+          </div>
+        </div>
+        <div class="projects-section-head">Your projects</div>
+        <p style="margin:0 8px 8px; font-size:11.5px; color:var(--text-faint); line-height:1.45;">
+          Each one can be linked to a <code>.flowspec.json</code> file on disk via <strong>Save</strong> / <strong>Open</strong>.
         </p>
         <ul class="project-list" id="project-list"></ul>
       </div>
@@ -1384,10 +1527,6 @@
         <ul class="template-list" id="template-list"></ul>
       </div>
     </div>
-    <div class="modal-footer" id="projects-modal-footer">
-      <button class="btn" id="new-blank-btn">+ New (blank)</button>
-      <button class="btn primary" id="show-templates-btn">+ From template…</button>
-    </div>
   </div>
 </div>
 
@@ -1395,7 +1534,7 @@
 // =============================================================
 // FlowSpec — visual flowchart builder with LLM-friendly text out
 // =============================================================
-const FLOWSPEC_VERSION = '0.17.1';
+const FLOWSPEC_VERSION = '0.18.0';
 
 const NODE_TYPES = {
   start:    { label: 'Start',    color: '#c0dd97', stroke: '#3b6d11', text: '#173404', shape: 'pill',    hint: 'Where the flow begins. Typically one per chart.' },
@@ -1443,6 +1582,7 @@ const state = {
   issues: [],              // ACTIVE issues from validateFlow() (after suppression)
   suppressedIssuesView: [], // currently-flagged issues that the user has chosen to suppress
   suppressedIssues: new Set(), // Set<fingerprint> of suppressed issue fingerprints
+  issuesHidden: false,     // global toggle — when true, all flow validation is hidden (badge, panel, per-node !)
   dirty: false,            // in-memory state differs from last saved file (or no file)
   loading: false,          // true while bulk-loading a project (suppresses dirty)
   connectDrag: null,       // { sourceId, currentWorldX, currentWorldY, hoverTargetId } when dragging a handle
@@ -1515,6 +1655,7 @@ function save() {
     linkName: prev ? (prev.linkName || null) : null,
     dirty: state.dirty,
     suppressedIssues: Array.from(state.suppressedIssues),
+    issuesHidden: !!state.issuesHidden,
   };
   saveWorkspace(ws);
   // save() is called after every mutation — mark dirty unless we're currently mid-load
@@ -1536,6 +1677,7 @@ function load() {
   state.nextId = p.nextId || 1;
   state.dirty = !!p.dirty;
   state.suppressedIssues = new Set(p.suppressedIssues || []);
+  state.issuesHidden = !!p.issuesHidden;
   return true;
 }
 
@@ -1548,6 +1690,7 @@ function serialize() {
     frames: JSON.parse(JSON.stringify(state.frames)),
     nextId: state.nextId,
     suppressedIssues: Array.from(state.suppressedIssues),
+    issuesHidden: !!state.issuesHidden,
   };
 }
 function deserialize(s) {
@@ -1557,6 +1700,7 @@ function deserialize(s) {
   state.frames = JSON.parse(JSON.stringify(s.frames || []));
   state.nextId = s.nextId;
   state.suppressedIssues = new Set(s.suppressedIssues || []);
+  state.issuesHidden = !!s.issuesHidden;
   // Drop selections that may reference removed items
   state.selectedNodeIds.clear();
   state.selectedEdgeId = null;
@@ -2249,14 +2393,18 @@ function hexWithAlpha(hex, alpha) {
 
 function renderFrames() {
   framesLayer.innerHTML = '';
-  const TITLE_BAR_H = 28;
+  // Top is taller because it carries the label; the other 3 sides are slim
+  // visual borders that act as drag handles. Together with the label-strip
+  // they form a 4-sided "outline" around a click-through body.
+  const TOP_H = 28;
+  const SIDE_W = 12;
   for (const f of state.frames) {
     const isSel = state.selectedFrameIds.has(f.id);
     const stroke = f.color || '#888780';
     const fill = (f.color && hexWithAlpha(f.color, 0.10)) || 'rgba(150,150,150,0.06)';
-    const titleFill = (f.color && hexWithAlpha(f.color, 0.25)) || 'rgba(150,150,150,0.18)';
-    // Outer outline rect — dashed, visual only (pointer-events: none from CSS),
-    // so clicks inside fall through to the canvas marquee handler
+    const stripFill = (f.color && hexWithAlpha(f.color, 0.25)) || 'rgba(150,150,150,0.18)';
+    // Outer dashed outline — visual only (pointer-events: none from CSS),
+    // so clicks inside the body fall through to the canvas marquee handler
     const rect = el('rect', {
       class: 'frame-rect' + (isSel ? ' selected' : ''),
       x: f.x, y: f.y, width: f.w, height: f.h,
@@ -2267,46 +2415,62 @@ function renderFrames() {
       'data-frame-id': f.id,
     });
     framesLayer.appendChild(rect);
-    // Title bar — slightly more opaque tab with rounded TOP corners only,
-    // sits above the body. This is the drag handle for the frame.
-    const tbH = Math.min(TITLE_BAR_H, f.h);
-    const rx = 8;
-    const tbPath =
-      `M ${f.x + rx} ${f.y}` +
-      ` L ${f.x + f.w - rx} ${f.y}` +
-      ` A ${rx} ${rx} 0 0 1 ${f.x + f.w} ${f.y + rx}` +
-      ` L ${f.x + f.w} ${f.y + tbH}` +
-      ` L ${f.x} ${f.y + tbH}` +
-      ` L ${f.x} ${f.y + rx}` +
-      ` A ${rx} ${rx} 0 0 1 ${f.x + rx} ${f.y}` +
-      ` Z`;
-    const titleBar = el('path', {
-      class: 'frame-titlebar',
-      d: tbPath,
-      fill: titleFill,
-      stroke: 'none',
-      'data-frame-id': f.id,
-    });
-    attachFrameHandlers(titleBar, f);
-    framesLayer.appendChild(titleBar);
-    // Title text
+
+    // 4 drag strips around the perimeter. Top is full-width and tall enough
+    // for the label; the others are slim. All 4 share the same drag handler,
+    // so any side picks up + moves the frame. The middle (body) stays
+    // pointer-events: none for marquee-through.
+    const tH = Math.min(TOP_H, Math.max(20, Math.floor(f.h * 0.45)));
+    const sW = Math.min(SIDE_W, Math.max(6, Math.floor(f.w * 0.18)));
+    const bH = Math.min(SIDE_W, Math.max(6, Math.floor(f.h * 0.18)));
+    const strips = [
+      // Top — full width, contains the label
+      { x: f.x, y: f.y, w: f.w, h: tH, kind: 'top' },
+      // Bottom — full width
+      { x: f.x, y: f.y + f.h - bH, w: f.w, h: bH, kind: 'bottom' },
+      // Left — between top and bottom strips
+      { x: f.x, y: f.y + tH, w: sW, h: f.h - tH - bH, kind: 'left' },
+      // Right — between top and bottom strips
+      { x: f.x + f.w - sW, y: f.y + tH, w: sW, h: f.h - tH - bH, kind: 'right' },
+    ];
+    for (const s of strips) {
+      if (s.w <= 0 || s.h <= 0) continue;
+      const strip = el('rect', {
+        class: 'frame-strip frame-strip-' + s.kind + (isSel ? ' selected' : ''),
+        x: s.x, y: s.y, width: s.w, height: s.h,
+        fill: stripFill,
+        stroke: 'none',
+        'data-frame-id': f.id,
+      });
+      attachFrameHandlers(strip, f);
+      framesLayer.appendChild(strip);
+    }
+
+    // Title text on the top strip
     const title = el('text', {
       class: 'frame-title',
       x: f.x + 10, y: f.y + 18,
       fill: stroke,
     }, f.title || 'Group');
     framesLayer.appendChild(title);
-    // Resize handles at corners when selected
+
+    // Resize handles when selected — 4 corners + 4 side midpoints (8 total)
     if (isSel) {
-      const corners = [
-        { x: f.x,         y: f.y,         anchor: 'nw' },
-        { x: f.x + f.w,   y: f.y,         anchor: 'ne' },
-        { x: f.x,         y: f.y + f.h,   anchor: 'sw' },
-        { x: f.x + f.w,   y: f.y + f.h,   anchor: 'se' },
+      const anchors = [
+        // Corners — diagonal resize
+        { x: f.x,             y: f.y,             anchor: 'nw' },
+        { x: f.x + f.w,       y: f.y,             anchor: 'ne' },
+        { x: f.x,             y: f.y + f.h,       anchor: 'sw' },
+        { x: f.x + f.w,       y: f.y + f.h,       anchor: 'se' },
+        // Sides — single-axis resize
+        { x: f.x + f.w / 2,   y: f.y,             anchor: 'n' },
+        { x: f.x + f.w / 2,   y: f.y + f.h,       anchor: 's' },
+        { x: f.x,             y: f.y + f.h / 2,   anchor: 'w' },
+        { x: f.x + f.w,       y: f.y + f.h / 2,   anchor: 'e' },
       ];
-      for (const c of corners) {
+      for (const c of anchors) {
         const h = el('rect', {
-          class: 'frame-corner ' + c.anchor,
+          class: 'frame-corner anchor-' + c.anchor,
           x: c.x - 5, y: c.y - 5, width: 10, height: 10,
           rx: 2, ry: 2,
         });
@@ -2339,6 +2503,26 @@ function attachFrameHandlers(rect, frame) {
     ev.preventDefault();
     ev.stopPropagation();
     showContextMenu(ev.clientX, ev.clientY, menuItemsForFrame(frame.id));
+  });
+  // Double-click → Properties + focus title
+  rect.addEventListener('dblclick', (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    state.selectedFrameIds = new Set([frame.id]);
+    state.selectedNodeIds.clear();
+    state.selectedEdgeId = null;
+    state.selectedWaypointIds.clear();
+    focusPropertiesInput('f-frame-title');
+  });
+  rect.addEventListener('pointerup', (ev) => {
+    if (ev.pointerType !== 'touch' && ev.pointerType !== 'pen') return;
+    noteTap('frame', frame.id, ev, () => {
+      state.selectedFrameIds = new Set([frame.id]);
+      state.selectedNodeIds.clear();
+      state.selectedEdgeId = null;
+      state.selectedWaypointIds.clear();
+      focusPropertiesInput('f-frame-title');
+    });
   });
   rect.addEventListener('pointerdown', (ev) => {
     ev.stopPropagation();
@@ -2626,12 +2810,68 @@ function screenToWorld(p) {
   return { x: (p.x - state.pan.x) / state.zoom, y: (p.y - state.pan.y) / state.zoom };
 }
 
+// Open the Properties tab for whatever's currently selected and focus a
+// specific input id once it's rendered. Used by double-click handlers.
+function focusPropertiesInput(inputId) {
+  state.panTab = 'properties';
+  applyPanelCollapsed(false);
+  render();
+  // Wait one frame for the panel content to render before grabbing the input
+  requestAnimationFrame(() => {
+    const inp = document.getElementById(inputId);
+    if (inp) {
+      inp.focus();
+      if (typeof inp.select === 'function') inp.select();
+    }
+  });
+}
+
+// Track double-tap on touch devices. Some touch browsers (notably iOS) fire
+// `dblclick` on fast taps, but only sometimes — manual tracking is more
+// reliable. Cross-platform `dblclick` is still wired below for desktop.
+const DOUBLE_TAP_MS = 320;
+const DOUBLE_TAP_PX = 12;
+let lastTap = null; // { kind, id, time, x, y }
+function noteTap(kind, id, ev, onDouble) {
+  const now = performance.now();
+  if (lastTap &&
+      lastTap.kind === kind && lastTap.id === id &&
+      now - lastTap.time < DOUBLE_TAP_MS &&
+      Math.hypot(ev.clientX - lastTap.x, ev.clientY - lastTap.y) < DOUBLE_TAP_PX) {
+    lastTap = null;
+    onDouble();
+    return;
+  }
+  lastTap = { kind, id, time: now, x: ev.clientX, y: ev.clientY };
+}
+
 function attachNodeHandlers(g, node) {
   // Desktop right-click → context menu
   g.addEventListener('contextmenu', (ev) => {
     ev.preventDefault();
     ev.stopPropagation();
     showContextMenu(ev.clientX, ev.clientY, menuItemsForNode(node.id));
+  });
+  // Double-click / fast double-tap → open Properties + focus label
+  g.addEventListener('dblclick', (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    state.selectedNodeIds = new Set([node.id]);
+    state.selectedEdgeId = null;
+    state.selectedFrameIds.clear();
+    state.selectedWaypointIds.clear();
+    focusPropertiesInput('f-label');
+  });
+  // Touch fallback for double-tap (some browsers don't fire dblclick reliably)
+  g.addEventListener('pointerup', (ev) => {
+    if (ev.pointerType !== 'touch' && ev.pointerType !== 'pen') return;
+    noteTap('node', node.id, ev, () => {
+      state.selectedNodeIds = new Set([node.id]);
+      state.selectedEdgeId = null;
+      state.selectedFrameIds.clear();
+      state.selectedWaypointIds.clear();
+      focusPropertiesInput('f-label');
+    });
   });
   g.addEventListener('pointerdown', (ev) => {
     pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
@@ -2839,8 +3079,13 @@ document.addEventListener('pointermove', (ev) => {
     else if (a === 'ne') { ny = state.frameDrag.origY + dy; nw = state.frameDrag.origW + dx; nh = state.frameDrag.origH - dy; }
     else if (a === 'sw') { nx = state.frameDrag.origX + dx; nw = state.frameDrag.origW - dx; nh = state.frameDrag.origH + dy; }
     else if (a === 'se') { nw = state.frameDrag.origW + dx; nh = state.frameDrag.origH + dy; }
-    if (nw < 80) { if (a === 'nw' || a === 'sw') nx -= (80 - nw); nw = 80; }
-    if (nh < 60) { if (a === 'nw' || a === 'ne') ny -= (60 - nh); nh = 60; }
+    // Side handles — resize one dimension only, anchored to the opposite edge
+    else if (a === 'n') { ny = state.frameDrag.origY + dy; nh = state.frameDrag.origH - dy; }
+    else if (a === 's') { nh = state.frameDrag.origH + dy; }
+    else if (a === 'w') { nx = state.frameDrag.origX + dx; nw = state.frameDrag.origW - dx; }
+    else if (a === 'e') { nw = state.frameDrag.origW + dx; }
+    if (nw < 80) { if (a === 'nw' || a === 'sw' || a === 'w') nx -= (80 - nw); nw = 80; }
+    if (nh < 60) { if (a === 'nw' || a === 'ne' || a === 'n') ny -= (60 - nh); nh = 60; }
     f.x = Math.round(nx / 10) * 10;
     f.y = Math.round(ny / 10) * 10;
     f.w = Math.round(nw / 10) * 10;
@@ -3729,6 +3974,34 @@ function menuItemsForNode(nodeId) {
     state.connectSource = nodeId;
     render();
   }});
+  // Suppress / show warnings on this node — toggle. When 2+ are selected, apply to all.
+  const node = state.nodes.find(n => n.id === nodeId);
+  if (node) {
+    const ids = state.selectedNodeIds.has(nodeId)
+      ? Array.from(state.selectedNodeIds) : [nodeId];
+    // If any in scope are not yet suppressed, the action turns suppression ON.
+    // If all are suppressed, the action turns it OFF.
+    const allSuppressed = ids.every(id => {
+      const x = state.nodes.find(n => n.id === id);
+      return x && x.suppressWarnings;
+    });
+    items.push({
+      label: allSuppressed
+        ? (ids.length > 1 ? `Show warnings on ${ids.length} nodes` : 'Show warnings on this node')
+        : (ids.length > 1 ? `Suppress warnings on ${ids.length} nodes` : 'Suppress warnings on this node'),
+      action: () => {
+        snapshot();
+        for (const id of ids) {
+          const x = state.nodes.find(n => n.id === id);
+          if (!x) continue;
+          if (allSuppressed) delete x.suppressWarnings;
+          else x.suppressWarnings = true;
+        }
+        save();
+        render();
+      },
+    });
+  }
   items.push('sep');
   items.push({ label: selCount > 1 ? `Delete ${selCount} nodes` : 'Delete', danger: true, action: () => {
     ensureScope();
@@ -4002,22 +4275,42 @@ function clearAllSuppressions() {
 
 function updateIssuesUI() {
   const all = validateFlow();
-  // Split into active (visible) and currently-flagged-but-suppressed
+  // Build set of node IDs whose warnings the user has muted at the per-node level
+  const nodeSuppressed = new Set();
+  for (const n of state.nodes) {
+    if (n.suppressWarnings) nodeSuppressed.add(n.id);
+  }
+  // Split into active (visible) and currently-flagged-but-suppressed.
+  // A warning is "suppressed" if any of: global hide, this exact warning was
+  // dismissed via ×, or the node it points at is muted entirely.
   const active = [];
   const suppressed = [];
   for (const iss of all) {
-    if (state.suppressedIssues.has(issueFingerprint(iss))) suppressed.push(iss);
+    const nodeMuted = iss.nodeId && nodeSuppressed.has(iss.nodeId);
+    const fpMuted  = state.suppressedIssues.has(issueFingerprint(iss));
+    if (state.issuesHidden || nodeMuted || fpMuted) suppressed.push(iss);
     else active.push(iss);
   }
   state.issues = active;
   state.suppressedIssuesView = suppressed;
 
+  // Header badge — moved out of the secondary toolbar in v0.18 so it's never
+  // hidden when the toolbar is collapsed. We address it by id here so this
+  // works regardless of where the button is rendered.
   const btn = document.getElementById('issues-btn');
   if (!btn) return;
   const activeN = active.length;
   const suppN = suppressed.length;
+  // When global hide is on, show a low-key badge so the user remembers + can re-enable
+  if (state.issuesHidden) {
+    btn.style.display = '';
+    btn.dataset.severity = 'muted';
+    btn.textContent = '⚠ off';
+    btn.title = 'Flow validation is hidden. Click for options.';
+    return;
+  }
   // Keep button visible whenever ANY suppressions exist so the user can manage them
-  const orphanedSuppressed = state.suppressedIssues.size - suppN;
+  const orphanedSuppressed = state.suppressedIssues.size - suppressed.filter(s => state.suppressedIssues.has(issueFingerprint(s))).length;
   if (activeN === 0 && suppN === 0 && orphanedSuppressed === 0) {
     btn.style.display = 'none';
     return;
@@ -4035,6 +4328,23 @@ function updateIssuesUI() {
     btn.textContent = `⚠ ${suppN || state.suppressedIssues.size}`;
     btn.title = `Suppressed issues — click to manage`;
   }
+}
+
+// Toggle global "hide all flow validation". Persists per-project.
+function setIssuesHidden(hidden) {
+  state.issuesHidden = !!hidden;
+  save();
+  render();
+}
+// Toggle "suppress warnings on this node". Persists with the node.
+function toggleNodeWarnings(nodeId) {
+  const n = state.nodes.find(x => x.id === nodeId);
+  if (!n) return;
+  snapshot();
+  if (n.suppressWarnings) delete n.suppressWarnings;
+  else n.suppressWarnings = true;
+  save();
+  render();
 }
 
 // ---------- Tidy (overlap resolution) ----------
@@ -4362,7 +4672,8 @@ function renderPanel() {
           <p><strong>Move</strong> — drag any node. Arrow keys nudge selected nodes (<span class="kbd">Shift</span> for a bigger step).</p>
           <p><strong>Label or describe</strong> — click a node, edit Label/Description in the Properties tab. Press <span class="kbd">Enter</span> inside the label for a line break.</p>
           <p><strong>Delete</strong> — select, then <span class="kbd">Delete</span>.</p>
-          <p style="margin-top:8px;">Don't want to draw it yourself? Open <span class="kbd">⋮ More</span> → <strong>🤖 Generate with AI</strong> to build a flow from a description.</p>
+          <p><strong>Edit a node fast</strong> — double-click any node (or double-tap on touch) to open its Properties and jump straight to the label.</p>
+          <p style="margin-top:8px;">Don't want to draw it yourself? Click <span class="kbd">🤖 Generate</span> in the header to build a flow from a description (mobile: <span class="kbd">⋮ More</span> → <strong>🤖 Generate with AI</strong>).</p>
         </div>
       </details>
 
@@ -4370,7 +4681,7 @@ function renderPanel() {
         <summary>Generate with AI</summary>
         <div class="help-body">
           <p>FlowSpec can hand off to any LLM (ChatGPT, Claude, Gemini, etc.) to build a flow for you.</p>
-          <p>Open <span class="kbd">⋮ More</span> → <strong>🤖 Generate with AI</strong>:</p>
+          <p>Click <span class="kbd">🤖 Generate</span> in the header (mobile: <span class="kbd">⋮ More</span> → <strong>🤖 Generate with AI</strong>):</p>
           <p><strong>Step 1</strong> — copy the prompt (it contains the file format + layout rules). Paste into any chat model and describe what you want where it says <code>[describe what you want]</code>. Tick <strong>Include my current flow</strong> to have the model extend or modify what you've already drawn.</p>
           <p><strong>Step 2</strong> — paste the model's JSON response back. Click <strong>Load</strong>. The app opens it as a new project (or replaces the current one if you tick the box). Markdown code fences are stripped automatically; auto-layout runs if positions are missing.</p>
         </div>
@@ -4420,10 +4731,36 @@ function renderPanel() {
         <div class="help-body">
           <p><strong>Add a frame</strong> — click <span class="kbd">▢ Frame</span> in the toolbar, or press <span class="kbd">G</span>. With 2+ nodes selected, this <em>wraps</em> them in a sized frame; otherwise it drops an empty frame in the center.</p>
           <p>Right-click a selected node (when 2+ are selected) for <strong>Wrap N nodes in frame</strong>.</p>
-          <p><strong>Frames are containers</strong> — drag the slightly-darker <em>title bar</em> at the top to move the frame (every node inside moves with it; bend points inside move too). The body of the frame is click-through, so you can <strong>marquee-select inside large frames</strong> like the rest of the canvas.</p>
+          <p><strong>Frames are containers</strong> — the <em>entire perimeter</em> (top title strip + slim left / right / bottom borders) is the drag handle, so you can grab any side to move the frame. Every node inside moves with it; bend points inside move too. The body of the frame is click-through, so you can <strong>marquee-select inside large frames</strong> like the rest of the canvas.</p>
           <p>Each node that belongs to a frame gets a faint dashed outline in the frame's color so you can tell at a glance what's in vs. out.</p>
-          <p>Drag a corner handle to resize. Properties: title, color, delete.</p>
+          <p><strong>Resize</strong> from any of the 8 anchors when selected — 4 corners (diagonal) + 4 side midpoints (single-axis). Properties: title, color, delete.</p>
+          <p><strong>Edit fast</strong> — double-click a frame's border to open Properties and focus the title.</p>
           <p>Frames are included in Markdown / Narrative / JSON / Mermaid spec outputs (as Groups / subgraphs).</p>
+        </div>
+      </details>
+
+      <details class="help-section">
+        <summary>Validation &amp; errors</summary>
+        <div class="help-body">
+          <p>FlowSpec quietly validates your flow as you build. When something looks off, a <span class="kbd">⚠</span> badge appears in the header showing the count, and each affected node gets a small <span class="kbd">!</span> marker. Click the badge to open the <strong>Flow issues</strong> panel.</p>
+          <p>Validation is <strong>opt-out</strong>, not opt-in — useful when you want a clean spec, optional when you're sketching.</p>
+          <p><strong>Three levels of suppression</strong>, from most → least surgical:</p>
+          <ol style="padding-left: 22px; margin: 6px 0 10px;">
+            <li><strong>Per-warning</strong> — click the <span class="kbd">×</span> on any single row in the Flow issues panel.</li>
+            <li><strong>Per-node</strong> — open Properties → tick <strong>Suppress warnings for this node</strong>, or right-click the node → <strong>Suppress warnings</strong>. Hides every warning on that node.</li>
+            <li><strong>Globally</strong> — toggle <strong>Hide all flow validation</strong> at the top of the Flow issues panel, or right-click the <span class="kbd">⚠</span> badge.</li>
+          </ol>
+          <p style="margin-top: 10px;"><strong>Warning catalog</strong>:</p>
+          <table class="shortcuts-table" style="margin-top: 6px;">
+            <tr><td><strong>🔴 Decision has no outgoing branches</strong></td><td>A diamond Decision with zero outgoing edges. Silence if it's a placeholder.</td></tr>
+            <tr><td><strong>🟡 Decision has only one branch</strong></td><td>Diamond with one outgoing edge — nothing to decide. Silence if it's modeling a guard.</td></tr>
+            <tr><td><strong>🟡 Decision has N unlabeled branches</strong></td><td>2+ outgoing edges from a Decision but no labels. Silence if labels aren't useful here.</td></tr>
+            <tr><td><strong>🟡 Dead end — no outgoing connection</strong></td><td>A non-End node with nowhere to go. Silence if the flow legitimately stops here.</td></tr>
+            <tr><td><strong>🟡 Orphan — not connected to anything</strong></td><td>A node with no incoming and no outgoing connections.</td></tr>
+            <tr><td><strong>🟡 Unreachable from any starting node</strong></td><td>You can't get to it from any root — usually a cycle without entry.</td></tr>
+            <tr><td><strong>🔵 Node has no label</strong></td><td>The node text is empty or <code>(untitled)</code>.</td></tr>
+            <tr><td><strong>🔵 No clear starting node</strong></td><td>Every node has at least one incoming connection — no obvious entry point.</td></tr>
+          </table>
         </div>
       </details>
 
@@ -4709,6 +5046,13 @@ function renderPanel() {
         <div class="color-row" id="f-color-row"></div>
         <div class="help">Override the type's default color. Click the same swatch again to reset.</div>
       </div>
+      <div class="field">
+        <label class="field-toggle">
+          <input type="checkbox" id="f-suppress-warnings" ${n.suppressWarnings ? 'checked' : ''}>
+          <span>Suppress warnings for this node</span>
+        </label>
+        <div class="help">Hides every validation issue that targets this node — useful when you've intentionally built a structure the validator doesn't understand.</div>
+      </div>
       <div class="row cols-2" style="margin-bottom:10px;">
         <button class="btn" id="f-duplicate" title="Cmd/Ctrl+D">⎘ Duplicate</button>
         <button class="btn danger" id="f-delete">Delete</button>
@@ -4778,6 +5122,8 @@ function renderPanel() {
     }
     document.getElementById('f-duplicate').addEventListener('click', () => duplicateSelected());
     document.getElementById('f-delete').addEventListener('click', () => deleteSelected());
+    const suppToggle = document.getElementById('f-suppress-warnings');
+    if (suppToggle) suppToggle.addEventListener('change', () => toggleNodeWarnings(n.id));
     return;
   }
 
@@ -5387,8 +5733,9 @@ function buildLlmPrompt(includeCurrent) {
   let prompt = LLM_SCHEMA_PROMPT;
   if (includeCurrent && state.nodes.length > 0) {
     const current = serializeProject();
-    // Strip suppressedIssues + _format from the example to keep the prompt tight
+    // Strip suppression bookkeeping + _format from the example to keep the prompt tight
     delete current.suppressedIssues;
+    delete current.issuesHidden;
     delete current._format;
     prompt += '\n## Current flow (extend or modify this)\n\n```json\n' + JSON.stringify(current, null, 2) + '\n```\n';
   }
@@ -5670,6 +6017,16 @@ function renderIssuesPanel() {
   if (!body) return;
   const order = { error: 0, warning: 1, info: 2 };
 
+  // Top-of-panel global toggle. Always rendered so it's findable, even when
+  // there are no issues. When global hide is on, we short-circuit the rest.
+  const toggleHtml = `
+    <label class="issues-global-toggle">
+      <input type="checkbox" id="issues-hide-toggle" ${state.issuesHidden ? 'checked' : ''}>
+      <span>Hide all flow validation</span>
+      <span class="issues-toggle-help" title="When on, every node-level warning is hidden — the badge, the per-node ! markers, and this panel. Useful while sketching.">?</span>
+    </label>
+  `;
+
   const active = [...state.issues].sort((a, b) => order[a.severity] - order[b.severity]);
   const suppressed = [...(state.suppressedIssuesView || [])].sort((a, b) => order[a.severity] - order[b.severity]);
 
@@ -5678,8 +6035,20 @@ function renderIssuesPanel() {
   const flaggedFps = new Set([...active, ...suppressed].map(issueFingerprint));
   const orphanedFps = [...state.suppressedIssues].filter(fp => !flaggedFps.has(fp));
 
+  // Global-hide short-circuit
+  if (state.issuesHidden) {
+    body.innerHTML = toggleHtml + `
+      <div class="issues-empty" style="padding-top:8px;">
+        Flow validation is hidden.<br>
+        <span style="color:var(--text-faint); font-size:11.5px;">Toggle off above to see warnings again.</span>
+      </div>`;
+    wireIssuesToggle();
+    return;
+  }
+
   if (active.length === 0 && suppressed.length === 0 && orphanedFps.length === 0) {
-    body.innerHTML = '<div class="issues-empty">No issues detected. ✨</div>';
+    body.innerHTML = toggleHtml + '<div class="issues-empty">No issues detected. ✨</div>';
+    wireIssuesToggle();
     return;
   }
 
@@ -5734,7 +6103,7 @@ function renderIssuesPanel() {
     `;
   }
 
-  let html = '';
+  let html = toggleHtml;
   if (active.length > 0) {
     html += `<div class="issues-section-head">Active · ${active.length}</div>`;
     html += active.map(renderActiveRow).join('');
@@ -5749,7 +6118,31 @@ function renderIssuesPanel() {
   } else if (active.length === 0) {
     html += '<div class="issues-empty">No issues detected. ✨</div>';
   }
+  // Footer "Learn more" — jumps to the Validation section in the Help tab
+  html += `
+    <div class="issues-learn-more">
+      <button class="link-btn" id="issues-learn-more">Learn more about validation →</button>
+    </div>`;
   body.innerHTML = html;
+  wireIssuesToggle();
+  const learnBtn = document.getElementById('issues-learn-more');
+  if (learnBtn) learnBtn.addEventListener('click', () => {
+    state.panTab = 'help';
+    applyPanelCollapsed(false);
+    render();
+    // Open the Validation details element after the panel re-renders
+    requestAnimationFrame(() => {
+      const sections = document.querySelectorAll('.help-section');
+      for (const s of sections) {
+        const summary = s.querySelector('summary');
+        if (summary && /Validation/i.test(summary.textContent)) {
+          s.open = true;
+          s.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          break;
+        }
+      }
+    });
+  });
 
   // Wire interactions
   body.querySelectorAll('.issue-row').forEach(row => {
@@ -5792,6 +6185,12 @@ function renderIssuesPanel() {
   const clearBtn = document.getElementById('issues-clear-supp');
   if (clearBtn) clearBtn.addEventListener('click', clearAllSuppressions);
 }
+// Wires up the global "Hide all" checkbox at the top of the issues panel.
+// Idempotent — safe to call after every render of the panel body.
+function wireIssuesToggle() {
+  const tog = document.getElementById('issues-hide-toggle');
+  if (tog) tog.addEventListener('change', (ev) => setIssuesHidden(ev.target.checked));
+}
 function openIssuesPanel() {
   renderIssuesPanel();
   document.getElementById('issues-panel').classList.add('open');
@@ -5805,6 +6204,16 @@ document.getElementById('issues-btn').addEventListener('click', () => {
   else openIssuesPanel();
 });
 document.getElementById('issues-close').addEventListener('click', closeIssuesPanel);
+// Right-click the badge for the global mute toggle without opening the panel
+document.getElementById('issues-btn').addEventListener('contextmenu', (ev) => {
+  ev.preventDefault();
+  showContextMenu(ev.clientX, ev.clientY, [
+    { label: state.issuesHidden ? '☑ Show flow issues' : '☐ Hide all flow issues',
+      action: () => setIssuesHidden(!state.issuesHidden) },
+    'sep',
+    { label: 'Clear all suppressions', action: () => clearAllSuppressions() },
+  ]);
+});
 
 // ---------- Theme ----------
 function applyTheme(theme) {
@@ -6123,6 +6532,7 @@ function newProject(templateKeyOrBool) {
     state.nextId = 1;
   }
   state.suppressedIssues = new Set();
+  state.issuesHidden = false;
   save();
   state.loading = false;
   state.dirty = false;
@@ -6147,6 +6557,7 @@ function switchProject(id) {
   state.frames = p.frames || [];
   state.nextId = p.nextId || 1;
   state.suppressedIssues = new Set(p.suppressedIssues || []);
+  state.issuesHidden = !!p.issuesHidden;
   state.pan = { x: 0, y: 0 };
   state.zoom = 1;
   state.undoStack = [];
@@ -6295,16 +6706,13 @@ document.getElementById('new-blank-btn').addEventListener('click', () => newProj
 function showProjectsModalView(view) {
   const projectsView = document.getElementById('projects-view');
   const templatesView = document.getElementById('templates-view');
-  const footer = document.getElementById('projects-modal-footer');
   if (view === 'templates') {
     projectsView.style.display = 'none';
     templatesView.style.display = '';
-    footer.style.display = 'none';  // back link inside the view handles return
     renderTemplateGallery();
   } else {
     projectsView.style.display = '';
     templatesView.style.display = 'none';
-    footer.style.display = '';
   }
 }
 function renderTemplateGallery() {
@@ -6340,6 +6748,7 @@ function serializeProject() {
     frames: state.frames,
     nextId: state.nextId,
     suppressedIssues: Array.from(state.suppressedIssues),
+    issuesHidden: !!state.issuesHidden,
     _format: 'flowspec.v1',
   };
 }
@@ -6518,6 +6927,7 @@ async function applyOpenedFile(data, filename, fileHandle) {
   state.frames = data.frames || [];
   state.nextId = data.nextId || (state.nodes.length + state.edges.length + 1);
   state.suppressedIssues = new Set(data.suppressedIssues || []);
+  state.issuesHidden = !!data.issuesHidden;
   state.pan = { x: 0, y: 0 };
   state.zoom = 1;
   state.undoStack = [];
@@ -6703,6 +7113,7 @@ function wireDropdown(dropdownId, btnId) {
 }
 wireDropdown('export-dropdown', 'export-menu-btn');
 wireDropdown('more-dropdown', 'more-menu-btn');
+wireDropdown('edit-dropdown', 'edit-menu-btn');
 wireDropdown('floating-add-dropdown', 'floating-add-btn');
 // Floating canvas toolbar — always visible
 document.getElementById('floating-tidy-btn').addEventListener('click', () => autoLayout());
@@ -6730,6 +7141,30 @@ document.querySelectorAll('#export-menu .dropdown-item').forEach(item => {
     }
   });
 });
+
+// Edit menu items (desktop) — reuse the same handlers as the keyboard shortcuts
+document.querySelectorAll('#edit-menu .dropdown-item').forEach(item => {
+  item.addEventListener('click', () => {
+    document.getElementById('edit-dropdown').classList.remove('open');
+    const what = item.dataset.edit;
+    switch (what) {
+      case 'undo': undo(); break;
+      case 'redo': redo(); break;
+      case 'select-all':
+        state.selectedNodeIds = new Set(state.nodes.map(n => n.id));
+        state.selectedFrameIds = new Set(state.frames.map(f => f.id));
+        state.selectedEdgeId = null;
+        render();
+        break;
+      case 'find': openSearch(); break;
+      case 'find-replace': openFindReplace(); break;
+    }
+  });
+});
+
+// AI button — desktop direct shortcut for Generate with AI (still in More on mobile)
+const aiHeaderBtn = document.getElementById('ai-btn');
+if (aiHeaderBtn) aiHeaderBtn.addEventListener('click', () => openAiModal());
 
 // More menu items (mobile only — these re-route to existing handlers)
 document.querySelectorAll('#more-menu .dropdown-item').forEach(item => {

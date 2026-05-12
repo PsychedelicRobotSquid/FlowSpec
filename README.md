@@ -22,7 +22,7 @@ Most diagramming tools (Excalidraw, draw.io, Whimsical) export images or proprie
 - **8 node types** — Start, Process, Decision, End, Folder, File/Data, Screen, Note — each with distinct shapes and colors
 - **Per-node sizing** (Small / Medium / Large), labels (multi-line), descriptions, and custom color overrides
 - **Edge styling** — solid / dashed / dotted, custom color, waypoints to bend connections (click an already-selected edge to drop a bend point, or press `0` to drop one at the midpoint). Bend points are first-class: click to select, Shift-click to multi-select, drag to move the group, `Delete` to remove, right-click for color
-- **Frames / groups** — labeled containers around a set of nodes. Drag the **title bar** (slightly darker tab at the top) to move the frame; everything inside (nodes + bend points) moves with it. The frame's body is click-through, so you can **marquee-select inside large frames**. Faint dashed outline in the frame's color shows which nodes belong to it. Press `G` (or click `▢ Frame`) with 2+ nodes selected to wrap them. Multi-selectable; included in spec output (Markdown / Narrative / JSON / Mermaid)
+- **Frames / groups** — labeled containers around a set of nodes. **The entire perimeter** (top title strip + slim left / right / bottom borders) is the drag handle — grab any side to move the frame; everything inside (nodes + bend points) moves with it. The frame's body is click-through, so you can **marquee-select inside large frames**. Resize from any of the 8 anchors (4 corners + 4 side midpoints). Faint dashed outline in the frame's color shows which nodes belong to it. Press `G` (or click `▢ Frame`) with 2+ nodes selected to wrap them. Multi-selectable; included in spec output (Markdown / Narrative / JSON / Mermaid)
 - **Drag-to-connect** — drag from handles on a selected node to any other node
 - **Multi-select** — marquee drag or Shift-click, with align + distribute tools
 - **Copy / cut / paste / duplicate** (Cmd/Ctrl + C / X / V / D), works across projects
@@ -31,9 +31,10 @@ Most diagramming tools (Excalidraw, draw.io, Whimsical) export images or proprie
 - **Alignment guides** — dashed snap lines appear when you drag a node near another's edges or center
 - **Tidy** (`▦` or `L`) — overlap resolution that pushes nodes / frames apart by the minimum needed. Idempotent, scoped to selection if any, frames move as units and grow to contain their children
 - **Right-click / long-press** context menus on nodes, edges, and the canvas
+- **Double-click a node or frame** to open Properties and jump straight to its label for editing
 - **Search** (Cmd/Ctrl + F) — find nodes by label or description
 - **Find & Replace** (Ctrl + H / Cmd + Shift + H) — bulk edit labels, descriptions, or edge labels
-- **Flow validation** — flags unlabeled decisions, dead-ends, orphans, unreachable nodes. Suppress individual warnings if a structure is intentional
+- **Flow validation** — flags unlabeled decisions, dead-ends, orphans, unreachable nodes. Suppress per-warning, per-node, or globally — see [Validation & errors](#validation--errors) for the full warning catalog
 
 ### Canvas
 - **Pan** — hold Space + drag (or one-finger drag on touch)
@@ -65,7 +66,7 @@ Most diagramming tools (Excalidraw, draw.io, Whimsical) export images or proprie
 - **Onboarding tour** for first-time visitors, replayable from the Help tab
 
 ### Generate with AI
-Open the `⋮ More` menu → **🤖 Generate with AI…** to bring up the prompt builder. It hands you a ready-to-paste prompt that contains FlowSpec's full schema + layout rules. Drop it into any LLM (ChatGPT, Claude, Gemini, etc.), describe what you want, paste the JSON back, click Load. No file save / load step needed. Optionally include your current flow so the model can extend or refactor it.
+Click **🤖 Generate** in the header (or, on mobile, `⋮ More → 🤖 Generate with AI…`) to bring up the prompt builder. It hands you a ready-to-paste prompt that contains FlowSpec's full schema + layout rules. Drop it into any LLM (ChatGPT, Claude, Gemini, etc.), describe what you want, paste the JSON back, click Load. No file save / load step needed. Optionally include your current flow so the model can extend or refactor it.
 
 ### Zero dependencies
 Pure HTML, CSS, vanilla JavaScript. Single file. Works offline. No tracking, no analytics, no network calls.
@@ -89,6 +90,35 @@ Pure HTML, CSS, vanilla JavaScript. Single file. Works offline. No tracking, no 
 The project file (`.flowspec.json`, also produced by the header **⤓ Export → JSON copy**) is the round-trip format — it preserves positions, sizes, descriptions, edge IDs, and any other state needed to reopen the project exactly as you left it.
 
 The **Spec tab's** JSON format is intentionally minimal (just `id` / `type` / `label` / `description` / edges) and is meant to be machine-readable text for downstream tools or AI prompts, not a backup.
+
+---
+
+## Validation & errors
+
+FlowSpec quietly validates your flow as you build. When something looks off, a **⚠** badge appears in the header showing the count, and each affected node gets a small **!** marker in the corner. Click the badge to open the **Flow issues** panel — every warning lists the node, the message, and a `×` to dismiss that one warning specifically.
+
+Validation is **opt-out**, not opt-in: it's useful when you want a clean spec, but a distraction when you're sketching.
+
+### How to manage warnings
+
+Three levels of suppression, from most → least surgical:
+
+1. **Per-warning** — click the `×` on any single row in the Flow issues panel. Suppresses just that one combination of (node + warning text). If you fix the underlying issue and reintroduce it later, the suppression remembers and re-applies.
+2. **Per-node** — open Properties for a node and tick **Suppress warnings for this node**, or right-click the node → **Suppress warnings**. Hides every warning targeting that node, no matter the type. Use when a node is intentionally a dead-end / orphan / etc.
+3. **Globally** — toggle **Hide all flow validation** at the top of the Flow issues panel, or right-click the **⚠** badge → **Hide all flow issues**. Mutes the badge, the per-node `!` markers, and the panel entirely. Per-project setting — persists in the file. Use while sketching; turn it back on when you're tightening up.
+
+### Warning types
+
+| Severity | Message | What it means | Why you might silence it |
+|---|---|---|---|
+| 🔴 error | **Decision has no outgoing branches** | A diamond Decision node has zero outgoing connections — there's nothing to branch into. | You haven't drawn the branches yet, or the decision is intentionally a placeholder. |
+| 🟡 warning | **Decision has only one branch** | A Decision node has a single outgoing connection — there's nothing being decided. | You're modeling a guard / pre-condition rather than a true branch. |
+| 🟡 warning | **Decision has N unlabeled branches** | Two or more outgoing edges from a Decision, but the edges have no labels. | The branch labels aren't useful for what you're documenting. |
+| 🟡 warning | **Dead end — no outgoing connection** | A non-End / non-Data / non-Note node has nowhere to go. | The flow genuinely terminates here and you don't want to drop in an End node. |
+| 🟡 warning | **Orphan — not connected to anything** | A node with no incoming and no outgoing connections. | A floating Note-style node, or a node you parked while restructuring. |
+| 🟡 warning | **Unreachable from any starting node** | The node has incoming edges but you can't get to it from any root (it's behind a cycle with no entry). | Intentional cycle without a clear start, e.g. a state machine without an explicit "init". |
+| 🔵 info | **Node has no label** | The node text is empty or `(untitled)`. | Placeholder while you decide what it should be called. |
+| 🔵 info | **No clear starting node** | Every node has at least one incoming connection — there's no obvious entry point. | The flow loops in a way that's intentional, or it's a fragment meant to be embedded. |
 
 ---
 
