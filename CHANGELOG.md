@@ -2,6 +2,11 @@
 
 All notable changes to FlowSpec. Format roughly follows [Keep a Changelog](https://keepachangelog.com/). Versioning is loose pre-1.0 — minor bumps for feature batches, patch bumps for fixes.
 
+## [0.18.5] — 2026-05-12
+
+### Changed
+- **Node Description field is no longer LLM-coded.** Placeholder went from *"Extra context the LLM should know about this step"* → *"Extra context for this step"*, and the help text below it from *"the full text is in the LLM output"* → *"the full text appears in the spec output"*. The Description is generic per-node metadata that flows through to whichever spec format you export — Markdown for docs, Mermaid for a README, JSON for tooling, an LLM prompt, etc. — there's no reason to single out LLM consumption in the field's own UI.
+
 ## [0.18.4] — 2026-05-12
 
 ### Changed

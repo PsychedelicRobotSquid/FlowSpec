@@ -1598,7 +1598,7 @@
 // =============================================================
 // FlowSpec — visual flowchart builder with LLM-friendly text out
 // =============================================================
-const FLOWSPEC_VERSION = '0.18.4';
+const FLOWSPEC_VERSION = '0.18.5';
 
 const NODE_TYPES = {
   start:    { label: 'Start',    color: '#c0dd97', stroke: '#3b6d11', text: '#173404', shape: 'pill',    hint: 'Where the flow begins. Typically one per chart.' },
@@ -5120,8 +5120,8 @@ function renderPanel() {
       </div>
       <div class="field">
         <label>Description (optional)</label>
-        <textarea id="f-desc" placeholder="Extra context the LLM should know about this step" rows="4">${escapeHtml(n.description || '')}</textarea>
-        <div class="help">Up to 2 lines preview on the node; the full text is in the LLM output.</div>
+        <textarea id="f-desc" placeholder="Extra context for this step" rows="4">${escapeHtml(n.description || '')}</textarea>
+        <div class="help">Up to 2 lines preview on the node; the full text appears in the spec output.</div>
       </div>
       <div class="field">
         <label>Type</label>
