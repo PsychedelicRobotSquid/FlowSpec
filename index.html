@@ -1495,10 +1495,14 @@
         <div class="ai-step-label">Step 2 — Paste the LLM's response</div>
         <p class="ai-step-help">The app strips markdown code fences automatically. If positions are missing, auto-layout will tidy things up.</p>
         <textarea id="ai-response-text" rows="6" placeholder="Paste the JSON the LLM produces here…"></textarea>
-        <div style="display:flex; gap:6px; margin-top: 8px; flex-wrap: wrap; align-items: center;">
+        <div style="display:flex; gap:12px; margin-top: 8px; flex-wrap: wrap; align-items: center;">
           <label class="fr-check" style="margin:0;">
             <input type="checkbox" id="ai-replace-current">
             Replace current project (instead of opening new)
+          </label>
+          <label class="fr-check" style="margin:0;" title="Run the overlap-resolver after load — pushes tightly-clustered nodes apart without re-arranging the structure. Off by default so the LLM's intended layout comes through unchanged.">
+            <input type="checkbox" id="ai-auto-tidy">
+            Auto-tidy after load
           </label>
           <span style="flex:1"></span>
           <button class="btn primary" id="ai-load-btn">✨ Load</button>
@@ -1594,7 +1598,7 @@
 // =============================================================
 // FlowSpec — visual flowchart builder with LLM-friendly text out
 // =============================================================
-const FLOWSPEC_VERSION = '0.18.2';
+const FLOWSPEC_VERSION = '0.18.3';
 
 const NODE_TYPES = {
   start:    { label: 'Start',    color: '#c0dd97', stroke: '#3b6d11', text: '#173404', shape: 'pill',    hint: 'Where the flow begins. Typically one per chart.' },
@@ -5787,16 +5791,30 @@ const LLM_SCHEMA_PROMPT = `You're generating a .flowspec.json file for FlowSpec 
 
 - \`x\` and \`y\` are the CENTER of the node, in world pixels.
 - Snap coordinates to multiples of 10.
-- Recommended spacing: ~200px horizontal between siblings, ~140px vertical between layers.
+- Recommended spacing: **~240px horizontal** between siblings, **~160px vertical** between layers — and add roughly 50% more breathing room for any node whose label is long (over 20 characters or contains line breaks), since wider rendered nodes need wider spacing.
+- **Avoid overlap.** The user can run a tidy pass after load if they want, but starting too close together is harder for them to fix later. Err on the side of more space, not less.
 - Start at the top. Decisions branch outward. End at the bottom.
 - Every node needs a unique id (\`node_1\`, \`node_2\`, …). Edges \`edge_1\`, \`edge_2\`. Frames \`frame_1\`.
 - \`nextId\` must be greater than the largest number you used.
 
-## Validation rules (try to satisfy these)
+## Validation awareness
 
-- Decision nodes should have at least 2 outgoing edges, all labeled.
-- Non-end nodes shouldn't be dead-ends — give them an outgoing edge or change to type "end".
-- Every node should have a non-empty label.
+FlowSpec validates flows for structural problems and surfaces them in a diagnostic panel — Decision with no branches, dead-ends, orphans, missing labels, etc.
+
+Be **honest** with this diagnostic, not gameful with it:
+
+- When the user's request is well-specified, satisfy the rules:
+  - Decisions get 2+ outgoing edges with meaningful labels (yes/no, success/fail, retry, etc.).
+  - Non-End nodes connect to something downstream.
+  - Every node has a real, non-placeholder label.
+- When the user's request is vague or work-in-progress, **prefer honest gaps over fabrications**:
+  - If a Decision has branches the user didn't specify, leave the edges unlabeled and let the warning fire — don't invent yes/no labels.
+  - If a step has no clear next action, leave it as a dead-end and let the warning fire — don't connect it to a fabricated End node.
+  - If a node is genuinely a placeholder, leave the label as-is rather than guessing.
+
+The diagnostic panel is more useful when it reflects reality. The user can fix the gaps themselves, or silence them per-node if a gap is intentional.
+
+In short: try hard when the spec is complete; leave honest gaps when it isn't.
 
 ## Output
 
@@ -5920,6 +5938,10 @@ async function aiLoadResponse() {
   }
   if (!data.nextId || data.nextId <= maxId) data.nextId = maxId + 1;
 
+  // Whether to run the overlap-resolver after load. Off by default so the
+  // LLM's layout intent comes through unchanged unless the user opts in.
+  const autoTidyAfter = document.getElementById('ai-auto-tidy').checked;
+
   if (replaceCurrent) {
     snapshot();
     state.title = data.title || state.title || 'Imported from AI';
@@ -5930,20 +5952,22 @@ async function aiLoadResponse() {
     state.pan = { x: 0, y: 0 };
     state.zoom = 1;
     document.getElementById('title-input').value = state.title;
-    // If positions look like all zeros (LLM skipped them), auto-layout
+    // If positions look like all zeros (LLM skipped them), auto-layout no
+    // matter what — there's nothing to preserve.
     const allZero = state.nodes.length > 0 && state.nodes.every(n => (!n.x || n.x === 0) && (!n.y || n.y === 0));
     save();
-    if (allZero) autoLayout();
-    else fitToContent();
+    if (allZero || autoTidyAfter) autoLayout();
+    fitToContent();
     render();
   } else {
     await applyOpenedFile(data, (data.title || 'AI generated') + '.flowspec.json', null);
     const allZero = state.nodes.length > 0 && state.nodes.every(n => (!n.x || n.x === 0) && (!n.y || n.y === 0));
-    if (allZero) autoLayout();
-    else fitToContent();
+    if (allZero || autoTidyAfter) autoLayout();
+    fitToContent();
   }
+  const tidyNote = autoTidyAfter ? ' (auto-tidied)' : '';
   statusEl.style.color = 'var(--accent)';
-  statusEl.textContent = `✓ Loaded ${data.nodes.length} node${data.nodes.length===1?'':'s'} and ${(data.edges||[]).length} connection${(data.edges||[]).length===1?'':'s'}.`;
+  statusEl.textContent = `✓ Loaded ${data.nodes.length} node${data.nodes.length===1?'':'s'} and ${(data.edges||[]).length} connection${(data.edges||[]).length===1?'':'s'}${tidyNote}.`;
   // Auto-close after a moment so the user can verify the status, then see their flow
   setTimeout(() => closeAiModal(), 900);
 }

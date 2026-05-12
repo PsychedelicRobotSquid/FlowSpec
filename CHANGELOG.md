@@ -2,6 +2,15 @@
 
 All notable changes to FlowSpec. Format roughly follows [Keep a Changelog](https://keepachangelog.com/). Versioning is loose pre-1.0 — minor bumps for feature batches, patch bumps for fixes.
 
+## [0.18.3] — 2026-05-12
+
+### Changed
+- **AI prompt rewritten to reduce node clustering** — bumped recommended spacing from `~200×140` to `~240×160`, plus an explicit "+50% for long labels" rule and an "avoid overlap, err on the side of more space" instruction. LLMs are still bad at spatial reasoning, but at least the starting numbers are more conservative
+- **AI prompt now frames validation as a diagnostic, not a checklist to game** — replaces the old "Validation rules (try to satisfy these)" with a "Validation awareness" section that says: when the user's request is well-specified, satisfy the rules; when it's vague or work-in-progress, **prefer honest gaps over fabrications** (don't invent yes/no labels, don't connect to a fabricated End node just to silence a dead-end warning, etc.). Keeps the validator's diagnostic value intact when the spec is incomplete
+
+### Added
+- **Auto-tidy after load** — new checkbox in the AI modal next to "Replace current project". Off by default so the LLM's intended layout comes through unchanged; tick it when the model packs nodes too close together and you want the overlap-resolver to push them apart automatically. Independent of the existing "all-zero positions → auto-layout" fallback
+
 ## [0.18.2] — 2026-05-12
 
 ### Changed
