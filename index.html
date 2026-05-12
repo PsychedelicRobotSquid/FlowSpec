@@ -680,9 +680,34 @@
     z-index: 70;
     display: none;
     flex-direction: column;
-    overflow: hidden;
+    /* `overflow: hidden` clipped the arrow pointer; let it stick out instead.
+       Inner scrolling lives on .issues-body. */
+    overflow: visible;
   }
   .issues-panel.open { display: flex; }
+  /* Small triangle pointing up at the ⚠ badge — anchored at runtime via
+     the --arrow-right CSS variable set by anchorIssuesPanelToBadge(). */
+  .issues-panel::before,
+  .issues-panel::after {
+    content: '';
+    position: absolute;
+    bottom: 100%;
+    right: var(--arrow-right, 12px);
+    width: 0; height: 0;
+    border-left: 8px solid transparent;
+    border-right: 8px solid transparent;
+    pointer-events: none;
+  }
+  .issues-panel::before {
+    /* Outer (border) triangle — sits 1px above so it shows the panel's border color */
+    border-bottom: 8px solid var(--border);
+    margin-bottom: 0;
+  }
+  .issues-panel::after {
+    /* Inner (fill) triangle — covers the outer except for a 1px outline */
+    border-bottom: 8px solid var(--surface-2);
+    margin-bottom: -1px;
+  }
   .issues-head {
     padding: 10px 14px;
     background: var(--surface-2);
@@ -1275,23 +1300,28 @@
         <button class="dropdown-item" data-export="spec">Spec text (open tab)</button>
       </div>
     </div>
-    <button class="btn desktop-only" id="output-toggle-btn" title="Open the Spec output tab">📄 Spec</button>
     <button class="btn desktop-only" id="ai-btn" title="Generate a flow from a description using any LLM">🤖 Generate</button>
-    <!-- More menu — mobile-only fallback for buttons hidden by .desktop-only -->
+    <!-- More menu — mobile-only fallback for buttons hidden by .desktop-only.
+         Order mirrors the desktop header left → right, with Generate last. -->
     <div class="dropdown mobile-only" id="more-dropdown">
       <button class="btn" id="more-menu-btn" title="More actions">⋮ More</button>
       <div class="dropdown-menu" id="more-menu">
-        <button class="dropdown-item" data-more="ai">🤖 Generate with AI…</button>
-        <button class="dropdown-item" data-more="find-replace">🔎 Find &amp; Replace…</button>
-        <hr style="border:none; border-top:1px solid var(--border); margin:4px 0;">
-        <button class="dropdown-item" data-more="spec">📄 Spec tab</button>
         <button class="dropdown-item" data-more="projects">📁 Projects…</button>
+        <hr style="border:none; border-top:1px solid var(--border); margin:4px 0;">
         <button class="dropdown-item" data-more="open">📂 Open…</button>
         <button class="dropdown-item" data-more="save">💾 Save</button>
         <button class="dropdown-item" data-more="save-as">💾 Save As…</button>
         <hr style="border:none; border-top:1px solid var(--border); margin:4px 0;">
+        <button class="dropdown-item" data-more="undo">↶ Undo</button>
+        <button class="dropdown-item" data-more="redo">↷ Redo</button>
+        <button class="dropdown-item" data-more="select-all">☐ Select all</button>
+        <button class="dropdown-item" data-more="find">🔎 Find…</button>
+        <button class="dropdown-item" data-more="find-replace">🔎 Find &amp; Replace…</button>
+        <hr style="border:none; border-top:1px solid var(--border); margin:4px 0;">
         <button class="dropdown-item" data-more="export-json">⤓ JSON copy</button>
         <button class="dropdown-item" data-more="export-png">🖼 PNG image</button>
+        <hr style="border:none; border-top:1px solid var(--border); margin:4px 0;">
+        <button class="dropdown-item" data-more="ai">🤖 Generate with AI…</button>
       </div>
     </div>
     <input type="file" id="open-file-fallback" style="display:none" accept="application/json,.json">
@@ -1534,7 +1564,7 @@
 // =============================================================
 // FlowSpec — visual flowchart builder with LLM-friendly text out
 // =============================================================
-const FLOWSPEC_VERSION = '0.18.0';
+const FLOWSPEC_VERSION = '0.18.1';
 
 const NODE_TYPES = {
   start:    { label: 'Start',    color: '#c0dd97', stroke: '#3b6d11', text: '#173404', shape: 'pill',    hint: 'Where the flow begins. Typically one per chart.' },
@@ -6191,13 +6221,45 @@ function wireIssuesToggle() {
   const tog = document.getElementById('issues-hide-toggle');
   if (tog) tog.addEventListener('change', (ev) => setIssuesHidden(ev.target.checked));
 }
+// Position the floating issues panel directly under the ⚠ header badge so
+// the relationship between trigger and panel is obvious. We compute on open
+// (and on window resize while open) since the badge can shift when the
+// header reflows. Falls back to the CSS top/right defaults if the badge
+// isn't on screen for whatever reason.
+function anchorIssuesPanelToBadge() {
+  const badge = document.getElementById('issues-btn');
+  const panel = document.getElementById('issues-panel');
+  if (!badge || !panel) return;
+  const r = badge.getBoundingClientRect();
+  if (!r || r.width === 0) return;
+  const vw = window.innerWidth;
+  const panelWidth = panel.offsetWidth || 320;
+  // Right-align the panel's right edge with the badge's right edge, clamped
+  // so it never drops off the viewport on either side.
+  const desiredRight = Math.max(0, vw - r.right);
+  const clampedRight = Math.max(8, Math.min(vw - panelWidth - 8, desiredRight));
+  panel.style.top  = (r.bottom + 10) + 'px';
+  panel.style.right = clampedRight + 'px';
+  panel.style.left = '';
+  // Place the little arrow pointer so it visually points up at the badge.
+  // Its `right` (within the panel) is the distance from panel-right to badge-center.
+  const badgeCenterFromPanelRight = (vw - clampedRight) - (r.left + r.width / 2);
+  panel.style.setProperty('--arrow-right', Math.max(8, badgeCenterFromPanelRight - 6) + 'px');
+}
 function openIssuesPanel() {
   renderIssuesPanel();
-  document.getElementById('issues-panel').classList.add('open');
+  const panel = document.getElementById('issues-panel');
+  panel.classList.add('open');
+  // Wait one frame so the panel has dimensions before we anchor it
+  requestAnimationFrame(anchorIssuesPanelToBadge);
 }
 function closeIssuesPanel() {
   document.getElementById('issues-panel').classList.remove('open');
 }
+window.addEventListener('resize', () => {
+  const panel = document.getElementById('issues-panel');
+  if (panel && panel.classList.contains('open')) anchorIssuesPanelToBadge();
+});
 document.getElementById('issues-btn').addEventListener('click', () => {
   const panel = document.getElementById('issues-panel');
   if (panel.classList.contains('open')) closeIssuesPanel();
@@ -6257,12 +6319,8 @@ document.querySelectorAll('.panel-collapsed-rail .rail-tab').forEach(b => {
   });
 });
 
-// Header "Output" button → jump to Spec tab and expand the panel
-document.getElementById('output-toggle-btn').addEventListener('click', () => {
-  state.panTab = 'spec';
-  applyPanelCollapsed(false);
-  render();
-});
+// (Header "Spec" button removed in v0.18.1 — Spec is reachable via the panel
+// tab strip and via Export ▾ → "Spec text (open tab)".)
 
 // ---------- Search (Cmd/Ctrl+F) ----------
 function openSearch() {
@@ -7061,15 +7119,52 @@ async function saveSpec() {
 }
 
 // ---------- Export menu ----------
-function exportJsonCopy() {
-  const blob = new Blob([JSON.stringify(serializeProject(), null, 2)], { type: 'application/json' });
+// Shared helper: try the File System Access API for a real Save dialog
+// (the browser remembers the last picked folder per-origin), and start it
+// next to the linked .flowspec.json file when one exists. Falls back to a
+// plain anchor download for Firefox/Safari, or when the user has never
+// linked a file. Returns true on success, false if the user cancelled.
+async function saveBlobWithPicker(blob, suggestedName, fileTypeMeta) {
+  if (FS_SUPPORTED) {
+    try {
+      const options = {
+        suggestedName,
+        types: [fileTypeMeta],
+      };
+      // If this project is linked to a .flowspec.json on disk, open the
+      // picker next to it so exports land alongside the project file.
+      const linkedHandle = await getLinkedHandle();
+      if (linkedHandle) options.startIn = linkedHandle;
+      const handle = await window.showSaveFilePicker(options);
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      setStatus('Saved: ' + handle.name);
+      return true;
+    } catch(e) {
+      if (e.name === 'AbortError') return false;
+      console.warn('Save picker failed, falling back to download', e);
+      // Fall through to anchor-download below
+    }
+  }
+  // Fallback — plain anchor download to the browser's default folder
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = suggestedFilename(state.title);
+  a.download = suggestedName;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  setStatus('Exported copy: ' + suggestedFilename(state.title));
+  setStatus('Downloaded: ' + suggestedName);
+  return true;
+}
+
+async function exportJsonCopy() {
+  const blob = new Blob([JSON.stringify(serializeProject(), null, 2)], { type: 'application/json' });
+  await saveBlobWithPicker(
+    blob,
+    suggestedFilename(state.title),
+    { description: 'FlowSpec project (copy)', accept: { 'application/json': ['.flowspec.json', '.json'] } },
+  );
 }
 
 // Unlink the current project's file
@@ -7172,18 +7267,22 @@ document.querySelectorAll('#more-menu .dropdown-item').forEach(item => {
     document.getElementById('more-dropdown').classList.remove('open');
     const what = item.dataset.more;
     switch (what) {
-      case 'spec':
-        state.panTab = 'spec';
-        applyPanelCollapsed(false);
-        render();
-        break;
       case 'projects': openProjectsModal(); break;
       case 'open': openFile(); break;
       case 'save': saveFile(); break;
       case 'save-as': saveFileAs(); break;
+      case 'undo': undo(); break;
+      case 'redo': redo(); break;
+      case 'select-all':
+        state.selectedNodeIds = new Set(state.nodes.map(n => n.id));
+        state.selectedFrameIds = new Set(state.frames.map(f => f.id));
+        state.selectedEdgeId = null;
+        render();
+        break;
+      case 'find': openSearch(); break;
+      case 'find-replace': openFindReplace(); break;
       case 'export-json': exportJsonCopy(); break;
       case 'export-png': exportPng(); break;
-      case 'find-replace': openFindReplace(); break;
       case 'ai': openAiModal(); break;
     }
   });
@@ -7228,83 +7327,126 @@ document.addEventListener('keydown', (ev) => {
 });
 
 // ---------- PNG Export ----------
+// Rasterize the current flow to PNG and route the save through the same
+// picker helper so the dialog opens next to the linked .flowspec.json (and
+// the browser remembers your last picked folder for next time).
 async function exportPng() {
   if (state.nodes.length === 0) {
     alert('Nothing to export.');
     return;
   }
-  // Compute bounding box of content
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const n of state.nodes) {
-    const b = nodeBounds(n);
-    if (b.x < minX) minX = b.x;
-    if (b.y < minY) minY = b.y;
-    if (b.x + b.w > maxX) maxX = b.x + b.w;
-    if (b.y + b.h > maxY) maxY = b.y + b.h;
+  try {
+    const blob = await rasterizeCurrentFlowToPng();
+    const filename = sanitizeForFilename(state.title) + '.png';
+    await saveBlobWithPicker(
+      blob,
+      filename,
+      { description: 'PNG image', accept: { 'image/png': ['.png'] } },
+    );
+  } catch (e) {
+    console.error('PNG export failed:', e);
+    alert('PNG export failed: ' + (e && e.message ? e.message : e) + '\n\nTry exporting JSON instead.');
   }
-  const padding = 40;
-  const w = Math.ceil(maxX - minX + padding * 2);
-  const h = Math.ceil(maxY - minY + padding * 2);
-  // Build a standalone SVG by cloning current edges/nodes layers
-  const theme = document.documentElement.getAttribute('data-theme') || 'dark';
-  const bg = getComputedStyle(document.body).getPropertyValue('--canvas-bg').trim() || (theme === 'dark' ? '#1f1f1d' : '#fafaf7');
-  const styles = document.querySelector('style').textContent;
-  const edgesClone = edgesLayer.cloneNode(true);
-  const nodesClone = nodesLayer.cloneNode(true);
-  edgesClone.setAttribute('transform', `translate(${-minX + padding},${-minY + padding})`);
-  nodesClone.setAttribute('transform', `translate(${-minX + padding},${-minY + padding})`);
-  // Strip event-only hit paths so they don't appear; they're invisible anyway
-  const xmlns = 'http://www.w3.org/2000/svg';
-  const out = document.createElementNS(xmlns, 'svg');
-  out.setAttribute('xmlns', xmlns);
-  out.setAttribute('width', w);
-  out.setAttribute('height', h);
-  out.setAttribute('viewBox', `0 0 ${w} ${h}`);
-  out.setAttribute('data-theme', theme);
-  // Background rect
-  const bgRect = document.createElementNS(xmlns, 'rect');
-  bgRect.setAttribute('width', w);
-  bgRect.setAttribute('height', h);
-  bgRect.setAttribute('fill', bg);
-  out.appendChild(bgRect);
-  // Inline arrow markers
-  const defs = document.createElementNS(xmlns, 'defs');
-  defs.innerHTML = svg.querySelector('defs').innerHTML;
-  out.appendChild(defs);
-  // Inline styles so themed colors resolve in the rasterized image
-  const styleEl = document.createElementNS(xmlns, 'style');
-  styleEl.textContent = styles;
-  out.appendChild(styleEl);
-  out.appendChild(edgesClone);
-  out.appendChild(nodesClone);
+}
 
-  const serializer = new XMLSerializer();
-  const svgStr = serializer.serializeToString(out);
-  const svgBlob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
-  const url = URL.createObjectURL(svgBlob);
-  const img = new Image();
-  img.onload = () => {
-    const scale = 2; // retina-ish
-    const canvas = document.createElement('canvas');
-    canvas.width = w * scale;
-    canvas.height = h * scale;
-    const ctx = canvas.getContext('2d');
-    ctx.scale(scale, scale);
-    ctx.drawImage(img, 0, 0);
-    URL.revokeObjectURL(url);
-    canvas.toBlob((blob) => {
-      const dl = document.createElement('a');
-      dl.href = URL.createObjectURL(blob);
-      dl.download = sanitizeFolderName(state.title) + '.png';
-      dl.click();
-      setTimeout(() => URL.revokeObjectURL(dl.href), 1000);
-    }, 'image/png');
-  };
-  img.onerror = (e) => {
-    URL.revokeObjectURL(url);
-    alert('PNG export failed. Try exporting JSON instead.');
-  };
-  img.src = url;
+// Builds a standalone SVG from the current canvas, paints it onto a Canvas,
+// and resolves with a PNG Blob. Promise-based so the caller can await + the
+// surrounding try/catch in exportPng() actually catches errors (the previous
+// version buried them inside img.onload callbacks).
+function rasterizeCurrentFlowToPng() {
+  return new Promise((resolve, reject) => {
+    // Bounding box of all nodes (frames, waypoints come along visually but
+    // don't count as content for the crop).
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const n of state.nodes) {
+      const b = nodeBounds(n);
+      if (b.x < minX) minX = b.x;
+      if (b.y < minY) minY = b.y;
+      if (b.x + b.w > maxX) maxX = b.x + b.w;
+      if (b.y + b.h > maxY) maxY = b.y + b.h;
+    }
+    const padding = 40;
+    const w = Math.ceil(maxX - minX + padding * 2);
+    const h = Math.ceil(maxY - minY + padding * 2);
+
+    const theme = document.documentElement.getAttribute('data-theme') || 'dark';
+    const bg = getComputedStyle(document.body).getPropertyValue('--canvas-bg').trim()
+            || (theme === 'dark' ? '#1f1f1d' : '#fafaf7');
+
+    // Clone the visible layers and shift them so the bounding box sits at
+    // the origin of our output SVG (with padding around the edges).
+    const xmlns = 'http://www.w3.org/2000/svg';
+    const framesClone = (typeof framesLayer !== 'undefined' && framesLayer)
+      ? framesLayer.cloneNode(true) : null;
+    const edgesClone = edgesLayer.cloneNode(true);
+    const nodesClone = nodesLayer.cloneNode(true);
+    const xform = `translate(${-minX + padding},${-minY + padding})`;
+    if (framesClone) framesClone.setAttribute('transform', xform);
+    edgesClone.setAttribute('transform', xform);
+    nodesClone.setAttribute('transform', xform);
+
+    const out = document.createElementNS(xmlns, 'svg');
+    out.setAttribute('xmlns', xmlns);
+    out.setAttribute('width', w);
+    out.setAttribute('height', h);
+    out.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    out.setAttribute('data-theme', theme);
+
+    // Background rect — fills the image with the canvas color
+    const bgRect = document.createElementNS(xmlns, 'rect');
+    bgRect.setAttribute('width', w);
+    bgRect.setAttribute('height', h);
+    bgRect.setAttribute('fill', bg);
+    out.appendChild(bgRect);
+
+    // Clone (don't recreate via innerHTML — that strips the SVG namespace)
+    const srcDefs = svg.querySelector('defs');
+    if (srcDefs) out.appendChild(srcDefs.cloneNode(true));
+
+    // Inline document styles so themed colors resolve in the rasterized image.
+    // Wrap in CDATA so any '<' or '&' in the CSS doesn't break XML parsing.
+    const styles = Array.from(document.querySelectorAll('style'))
+      .map(s => s.textContent || '').join('\n');
+    const styleEl = document.createElementNS(xmlns, 'style');
+    styleEl.appendChild(document.createTextNode('/*<![CDATA[*/\n' + styles + '\n/*]]>*/'));
+    out.appendChild(styleEl);
+
+    if (framesClone) out.appendChild(framesClone);
+    out.appendChild(edgesClone);
+    out.appendChild(nodesClone);
+
+    const svgStr = new XMLSerializer().serializeToString(out);
+    const svgBlob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(svgBlob);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const scale = 2; // retina-ish
+        const canvas = document.createElement('canvas');
+        canvas.width = w * scale;
+        canvas.height = h * scale;
+        const ctx = canvas.getContext('2d');
+        ctx.scale(scale, scale);
+        ctx.drawImage(img, 0, 0);
+        URL.revokeObjectURL(url);
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            reject(new Error('canvas.toBlob returned null'));
+            return;
+          }
+          resolve(blob);
+        }, 'image/png');
+      } catch (e) {
+        URL.revokeObjectURL(url);
+        reject(e);
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Browser failed to load the SVG into an image. Some inline styles may not be supported by the SVG renderer.'));
+    };
+    img.src = url;
+  });
 }
 document.querySelectorAll('.panel-tab').forEach(t => {
   t.addEventListener('click', () => {

@@ -2,6 +2,22 @@
 
 All notable changes to FlowSpec. Format roughly follows [Keep a Changelog](https://keepachangelog.com/). Versioning is loose pre-1.0 — minor bumps for feature batches, patch bumps for fixes.
 
+## [0.18.1] — 2026-05-12
+
+### Fixed
+- **PNG export was silently broken** — the rasterizer called `sanitizeFolderName()`, a function that doesn't exist. The ReferenceError was buried inside an async `img.onload` → `canvas.toBlob` callback, so nothing showed up in the UI; the user just clicked "PNG image" and saw nothing happen. Replaced with the existing `sanitizeForFilename()`, switched the rasterizer to a Promise-based pipeline, and wrapped the whole flow in a top-level `try/catch` so any future render failure surfaces a real alert instead of disappearing.
+- PNG also now includes the **frames layer** in the cropped image — previously only edges + nodes were copied. Defs are deep-cloned (instead of recreated via `innerHTML`, which lost the SVG namespace), and inlined `<style>` is wrapped in `<![CDATA[ ... ]]>` so any CSS specials don't trip XML parsing.
+
+### Added
+- **Both exports now use a real Save dialog** on Chrome / Edge — `showSaveFilePicker()` with `startIn` set to the linked `.flowspec.json` so the dialog opens in the same folder. The browser remembers your last picked location per-origin so subsequent exports default to that folder. Firefox / Safari fall back to the existing browser-download behavior unchanged.
+- **Issues panel now anchors under the ⚠ badge** instead of floating at a fixed top-right viewport position. Re-anchors on window resize while open. A small triangle pointer connects the panel to the badge so the source of the panel is unambiguous.
+
+### Changed
+- **Removed the dedicated `📄 Spec` button from the header** — Spec was reachable three ways (header button, Export ▾ → Spec text, panel tab strip). Two paths is plenty; the header button bought duplication for no marginal value.
+- **Mobile `⋮ More` menu reordered** to mirror the desktop header left → right, with `🤖 Generate with AI` last:
+  - Projects → Open / Save / Save As → Undo / Redo / Select all / Find / Find & Replace → JSON copy / PNG image → Generate with AI
+  - Removed the redundant "Spec tab" item (the panel's own bottom tab strip is always visible on mobile)
+
 ## [0.18.0] — 2026-05-11
 
 ### Added
