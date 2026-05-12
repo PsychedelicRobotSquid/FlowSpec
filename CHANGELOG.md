@@ -2,6 +2,11 @@
 
 All notable changes to FlowSpec. Format roughly follows [Keep a Changelog](https://keepachangelog.com/). Versioning is loose pre-1.0 — minor bumps for feature batches, patch bumps for fixes.
 
+## [0.18.7] — 2026-05-12
+
+### Fixed
+- **Tap-to-deselect on mobile** — tapping an empty spot on the canvas now actually clears the current selection, matching the documented behavior + the desktop "click-empty-canvas-to-deselect" pattern. Root cause was a coordinate-system mismatch in the tap-detect: the pointerdown handler stored `panStart.mouseX/Y` as SVG-local (relative to `svg.getBoundingClientRect()`), but the pointerup tap-detect compared the current `ev.clientX/Y` (viewport coords) against it. The delta was always offset by the SVG's bounding-rect left/top — typically several hundred pixels when the right panel or bottom drawer occupied viewport space — so the "did the user move less than 5px" check never registered as a tap, and the deselect never fired. Fixed by computing the current point through `svgPoint()` in the tap-detect too so it's apples-to-apples. While there, also widened the "had anything selected?" check to include waypoint selection (v0.17.0 missed adding that, so tapping empty canvas with only bend points selected wouldn't deselect either)
+
 ## [0.18.6] — 2026-05-12
 
 ### Added

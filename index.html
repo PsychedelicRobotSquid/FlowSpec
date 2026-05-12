@@ -1640,7 +1640,7 @@
 // =============================================================
 // FlowSpec — visual flowchart builder with LLM-friendly text out
 // =============================================================
-const FLOWSPEC_VERSION = '0.18.6';
+const FLOWSPEC_VERSION = '0.18.7';
 
 const NODE_TYPES = {
   start:    { label: 'Start',    color: '#c0dd97', stroke: '#3b6d11', text: '#173404', shape: 'pill',    hint: 'Where the flow begins. Typically one per chart.' },
@@ -3436,16 +3436,23 @@ function onPointerEnd(ev) {
     // Tap-to-deselect: if the user touched empty canvas and didn't actually
     // drag (any pointer movement under ~5px), treat as a click and clear
     // the current selection. Matches the desktop click-empty-canvas behavior.
+    //
+    // panStart.mouseX/Y are SVG-local (from svgPoint), so we must compute
+    // the current point the same way. Comparing svg-local against ev.clientX
+    // bakes in svg.getBoundingClientRect().left, which was the v0.18.x bug
+    // that broke tap-to-deselect on mobile (the SVG isn't at viewport x=0
+    // when the right panel/drawer occupies viewport space).
     let wasJustTap = false;
     if (state.panStart) {
-      const dx = ev.clientX - state.panStart.mouseX;
-      const dy = ev.clientY - state.panStart.mouseY;
+      const p = svgPoint(ev);
+      const dx = p.x - state.panStart.mouseX;
+      const dy = p.y - state.panStart.mouseY;
       wasJustTap = Math.hypot(dx, dy) < 5;
     }
     state.isPanning = false;
     state.panStart = null;
     if (wasJustTap) {
-      const hadSel = state.selectedNodeIds.size > 0 || state.selectedEdgeId || state.selectedFrameIds.size > 0;
+      const hadSel = state.selectedNodeIds.size > 0 || state.selectedEdgeId || state.selectedFrameIds.size > 0 || state.selectedWaypointIds.size > 0;
       if (hadSel) clearSelection();
     }
     render();
