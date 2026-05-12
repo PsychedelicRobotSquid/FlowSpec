@@ -632,6 +632,36 @@
   }
   .shortcuts-table td:last-child { color: var(--text-muted); }
 
+  /* Stacked warning catalog used in the Validation help section. The narrow
+     right-panel doesn't have room for a side-by-side table — each warning
+     gets its name on one line, then the explanation underneath. */
+  .warning-catalog { margin: 6px 0 0 0; }
+  .warning-catalog dt {
+    margin-top: 10px;
+    padding: 6px 8px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    font-size: 12px; font-weight: 500;
+    color: var(--text);
+    display: flex; align-items: center; gap: 8px;
+    line-height: 1.3;
+  }
+  .warning-catalog dt:first-child { margin-top: 0; }
+  .warning-catalog dd {
+    margin: 4px 0 0 0;
+    padding: 0 8px;
+    font-size: 12px; color: var(--text-muted);
+    line-height: 1.5;
+  }
+  .warning-catalog .sev-dot {
+    flex: 0 0 auto;
+    width: 10px; height: 10px; border-radius: 50%;
+  }
+  .warning-catalog .sev-dot.error   { background: #e07b5b; }
+  .warning-catalog .sev-dot.warning { background: #f0c75c; }
+  .warning-catalog .sev-dot.info    { background: #888780; }
+
 
   /* Node visual styles in SVG */
   .node-group { cursor: grab; }
@@ -1564,7 +1594,7 @@
 // =============================================================
 // FlowSpec — visual flowchart builder with LLM-friendly text out
 // =============================================================
-const FLOWSPEC_VERSION = '0.18.1';
+const FLOWSPEC_VERSION = '0.18.2';
 
 const NODE_TYPES = {
   start:    { label: 'Start',    color: '#c0dd97', stroke: '#3b6d11', text: '#173404', shape: 'pill',    hint: 'Where the flow begins. Typically one per chart.' },
@@ -4772,8 +4802,8 @@ function renderPanel() {
       <details class="help-section">
         <summary>Validation &amp; errors</summary>
         <div class="help-body">
-          <p>FlowSpec quietly validates your flow as you build. When something looks off, a <span class="kbd">⚠</span> badge appears in the header showing the count, and each affected node gets a small <span class="kbd">!</span> marker. Click the badge to open the <strong>Flow issues</strong> panel.</p>
-          <p>Validation is <strong>opt-out</strong>, not opt-in — useful when you want a clean spec, optional when you're sketching.</p>
+          <p>FlowSpec watches your flow for structural problems as you build — things like a Decision with only one branch, a node that's not connected to anything, or a dead-end that isn't an End node. The kind of issue that turns into "wait, what happens here?" when someone reads the spec later. The <span class="kbd">⚠</span> badge in the header counts active issues; click it for the full list.</p>
+          <p>The point is to catch these <em>before</em> you hand the spec off — to a teammate, to an LLM that's going to write code from it, to a doc, to your future self. Validation is <strong>opt-out</strong> — useful when you want a complete spec, optional when you're sketching.</p>
           <p><strong>Three levels of suppression</strong>, from most → least surgical:</p>
           <ol style="padding-left: 22px; margin: 6px 0 10px;">
             <li><strong>Per-warning</strong> — click the <span class="kbd">×</span> on any single row in the Flow issues panel.</li>
@@ -4781,16 +4811,31 @@ function renderPanel() {
             <li><strong>Globally</strong> — toggle <strong>Hide all flow validation</strong> at the top of the Flow issues panel, or right-click the <span class="kbd">⚠</span> badge.</li>
           </ol>
           <p style="margin-top: 10px;"><strong>Warning catalog</strong>:</p>
-          <table class="shortcuts-table" style="margin-top: 6px;">
-            <tr><td><strong>🔴 Decision has no outgoing branches</strong></td><td>A diamond Decision with zero outgoing edges. Silence if it's a placeholder.</td></tr>
-            <tr><td><strong>🟡 Decision has only one branch</strong></td><td>Diamond with one outgoing edge — nothing to decide. Silence if it's modeling a guard.</td></tr>
-            <tr><td><strong>🟡 Decision has N unlabeled branches</strong></td><td>2+ outgoing edges from a Decision but no labels. Silence if labels aren't useful here.</td></tr>
-            <tr><td><strong>🟡 Dead end — no outgoing connection</strong></td><td>A non-End node with nowhere to go. Silence if the flow legitimately stops here.</td></tr>
-            <tr><td><strong>🟡 Orphan — not connected to anything</strong></td><td>A node with no incoming and no outgoing connections.</td></tr>
-            <tr><td><strong>🟡 Unreachable from any starting node</strong></td><td>You can't get to it from any root — usually a cycle without entry.</td></tr>
-            <tr><td><strong>🔵 Node has no label</strong></td><td>The node text is empty or <code>(untitled)</code>.</td></tr>
-            <tr><td><strong>🔵 No clear starting node</strong></td><td>Every node has at least one incoming connection — no obvious entry point.</td></tr>
-          </table>
+          <dl class="warning-catalog">
+            <dt><span class="sev-dot error"></span> Decision has no outgoing branches</dt>
+            <dd>A diamond Decision with zero outgoing edges. Almost always a real bug — fix the missing branches, or silence it if the node is a placeholder you'll come back to.</dd>
+
+            <dt><span class="sev-dot warning"></span> Decision has only one branch</dt>
+            <dd>A diamond with one outgoing edge — there's nothing being decided. Either change it to a Process, add the missing branch, or silence if you're using the diamond shape to model a guard / pre-condition.</dd>
+
+            <dt><span class="sev-dot warning"></span> Decision has N unlabeled branches</dt>
+            <dd>Two or more edges leaving a Decision, but the edges have no labels. Readers can't tell which path is <em>yes</em> vs <em>no</em> vs <em>retry</em>. Add labels in Properties, or silence if labels aren't useful in your context.</dd>
+
+            <dt><span class="sev-dot warning"></span> Dead end — no outgoing connection</dt>
+            <dd>A non-End / non-Data / non-Note node with nowhere to go — the reader arrives and doesn't know what's supposed to happen next. Add an outgoing edge, swap the type to End if the flow legitimately terminates here, or silence per-node.</dd>
+
+            <dt><span class="sev-dot warning"></span> Orphan — not connected to anything</dt>
+            <dd>A node with no incoming <em>and</em> no outgoing connections — usually leftover from restructuring. Either connect it, delete it, or silence if it's a deliberately floating Note.</dd>
+
+            <dt><span class="sev-dot warning"></span> Unreachable from any starting node</dt>
+            <dd>The node has incoming edges but you can't get to it from any root — typically a cycle without an entry point. Add a Start node or an entry edge, or silence if the cycle is intentional.</dd>
+
+            <dt><span class="sev-dot info"></span> Node has no label</dt>
+            <dd>The label is empty or still says <code>(untitled)</code>. Spec output reads weirdly with anonymous nodes — add a name, or silence if you're sketching.</dd>
+
+            <dt><span class="sev-dot info"></span> No clear starting node</dt>
+            <dd>Every node has at least one incoming connection, so there's no obvious entry point for the reader. Either mark one as Start, or silence if the flow loops by design.</dd>
+          </dl>
         </div>
       </details>
 

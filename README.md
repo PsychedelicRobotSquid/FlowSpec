@@ -95,9 +95,18 @@ The **Spec tab's** JSON format is intentionally minimal (just `id` / `type` / `l
 
 ## Validation & errors
 
-FlowSpec quietly validates your flow as you build. When something looks off, a **⚠** badge appears in the header showing the count, and each affected node gets a small **!** marker in the corner. Click the badge to open the **Flow issues** panel — every warning lists the node, the message, and a `×` to dismiss that one warning specifically.
+FlowSpec watches your flow for **structural problems while you build** — the kinds of issues that turn into *"wait, what's supposed to happen here?"* when someone (or some LLM, or your future self) actually reads the spec. A **⚠** badge in the header counts active issues, each affected node gets a small **!** corner marker, and clicking the badge opens the **Flow issues** panel with the full list.
 
-Validation is **opt-out**, not opt-in: it's useful when you want a clean spec, but a distraction when you're sketching.
+Common things it catches:
+
+- A **Decision** diamond with only one branch coming out of it — almost always a bug, since if there's nothing to choose between, it isn't a decision
+- A **Decision** with multiple branches but no labels — readers can't tell which path is *yes* vs *no* vs *retry*
+- **Dead-end nodes** that aren't actually End nodes — the reader arrives and has no idea what should happen next
+- **Orphan nodes** floating with no connections at all — usually leftover from restructuring you forgot to clean up
+- **Unreachable nodes** that have incoming edges but can't be reached from any starting point (a cycle without an entry)
+- **Untitled nodes** — placeholders you set down and never came back to fill in
+
+The point is to catch these *before* you hand the spec off — to a teammate, to an LLM that's going to write code from it, to a doc, to your future self three months from now when you can't remember why you drew it this way. Validation is **opt-out**: turn it off entirely when you're sketching, leave it on when you want a clean, complete spec.
 
 ### How to manage warnings
 

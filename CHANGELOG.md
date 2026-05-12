@@ -2,6 +2,12 @@
 
 All notable changes to FlowSpec. Format roughly follows [Keep a Changelog](https://keepachangelog.com/). Versioning is loose pre-1.0 — minor bumps for feature batches, patch bumps for fixes.
 
+## [0.18.2] — 2026-05-12
+
+### Changed
+- **Validation intro rewritten** in both the README and the Help tab — the previous "when something looks off…" opener was vague and undersold what validation actually does. Now leads with concrete examples (Decision with one branch, dead-ends, orphans, unreachable nodes) and frames validation as *"catch problems before you hand the spec off to a teammate / LLM / your future self,"* so the reader knows what they're getting and why
+- **Warning catalog in the Help tab now stacks** — name on top, explanation underneath — instead of a side-by-side table that got squeezed into unreadable narrow columns inside the right-side panel. Each warning also now reads as actionable advice (what to fix, what to swap to, when to silence) instead of just a paraphrase of the message text
+
 ## [0.18.1] — 2026-05-12
 
 ### Fixed
