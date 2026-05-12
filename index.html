@@ -1395,7 +1395,7 @@
 // =============================================================
 // FlowSpec — visual flowchart builder with LLM-friendly text out
 // =============================================================
-const FLOWSPEC_VERSION = '0.17.0';
+const FLOWSPEC_VERSION = '0.17.1';
 
 const NODE_TYPES = {
   start:    { label: 'Start',    color: '#c0dd97', stroke: '#3b6d11', text: '#173404', shape: 'pill',    hint: 'Where the flow begins. Typically one per chart.' },
@@ -3265,9 +3265,16 @@ document.addEventListener('keydown', (ev) => {
 });
 
 document.addEventListener('keyup', (ev) => {
+  // IMPORTANT: only react if the keydown actually flipped the state-flag.
+  // The keydown handler bails when ev.target is an input/textarea/select, so
+  // typing space (or z) in a text field never sets spaceDown / zKeyDown.
+  // Without this guard, every keyup ran a full render(), which rebuilt the
+  // Properties panel and stole focus from the field you were typing in.
   if (ev.key === ' ' || ev.code === 'Space') {
-    state.spaceDown = false;
-    render();
+    if (state.spaceDown) {
+      state.spaceDown = false;
+      render();
+    }
   }
   if (ev.key === 'z' || ev.key === 'Z') {
     if (state.zKeyDown && !ev.metaKey && !ev.ctrlKey) {

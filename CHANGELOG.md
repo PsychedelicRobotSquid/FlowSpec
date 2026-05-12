@@ -2,6 +2,11 @@
 
 All notable changes to FlowSpec. Format roughly follows [Keep a Changelog](https://keepachangelog.com/). Versioning is loose pre-1.0 — minor bumps for feature batches, patch bumps for fixes.
 
+## [0.17.1] — 2026-05-11
+
+### Fixed
+- **Spacebar (and `Z`) in text fields no longer steals focus or triggers pan / zoom mode**. The keydown handler correctly bails out when focus is in an `input` / `textarea` / `select`, so typing space in a label or description never set the `spaceDown` / `zKeyDown` flags. But the keyup handler was unconditionally calling `render()` on every release — which rebuilt the Properties panel from scratch and destroyed the textarea you were typing in. Fixed by only running `render()` when the corresponding state flag was actually set (i.e., when keydown actually fired the mode toggle). Same root cause whether you were editing a node label, a description, an edge label, or any text field elsewhere in the app
+
 ## [0.17.0] — 2026-05-11
 
 ### Added
