@@ -2,6 +2,14 @@
 
 All notable changes to FlowSpec. Format roughly follows [Keep a Changelog](https://keepachangelog.com/). Versioning is loose pre-1.0 — minor bumps for feature batches, patch bumps for fixes.
 
+## [0.18.4] — 2026-05-12
+
+### Changed
+- **Validator now distinguishes flow nodes from file-structure nodes.** `folder` and `data` are exempt from the *Dead end*, *Orphan*, and *Unreachable* warnings — file trees are hierarchical, not procedural, so leaf folders, brand-new folders, and disconnected sub-trees are all valid. The old behavior flagged every leaf folder as a dead-end and every freshly-dropped folder as an orphan; that noise is gone.
+  - Mixed flows are unaffected: a chain like `Process → Data ("user.json")` is now allowed to terminate at the Data without an explicit End node, since "save to disk" is a legitimate end state. The trade-off is documented in the README — if you forget an End on a procedural flow that terminates at a Data, the validator can no longer nudge you.
+  - Internal: extracted three exemption sets (`SKIP_DEAD_END`, `SKIP_ORPHAN`, `SKIP_UNREACHABLE`) at the top of `validateFlow()` so the rules are easy to scan.
+- **README has a new "How warnings interact with node types" section** with a full per-node-type × per-warning matrix and a "What this means for mixed flows" subsection. The Help tab gets a condensed paragraph pointing at the same idea. Power users now have a single place to learn how the validator treats each type.
+
 ## [0.18.3] — 2026-05-12
 
 ### Changed

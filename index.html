@@ -1598,7 +1598,7 @@
 // =============================================================
 // FlowSpec — visual flowchart builder with LLM-friendly text out
 // =============================================================
-const FLOWSPEC_VERSION = '0.18.3';
+const FLOWSPEC_VERSION = '0.18.4';
 
 const NODE_TYPES = {
   start:    { label: 'Start',    color: '#c0dd97', stroke: '#3b6d11', text: '#173404', shape: 'pill',    hint: 'Where the flow begins. Typically one per chart.' },
@@ -4232,6 +4232,17 @@ function zoomBy(factor, anchorScreen) {
 // ---------- Validate flow ----------
 // Returns an array of issue objects: { nodeId, severity, message }
 // Severity: 'error' (red), 'warning' (yellow), 'info' (gray)
+//
+// Exemption sets, by warning. File-structure node types (folder, data) are
+// hierarchical, not procedural — leaf folders are normal, brand-new folders
+// are normal, disconnected sub-trees are normal — so they're exempt from
+// every "structural flow" warning. The only thing they can ever trip is
+// "Node has no label." See README → "How warnings interact with node types"
+// for the full matrix and rationale.
+const SKIP_DEAD_END    = new Set(['end',   'folder', 'data', 'note']);
+const SKIP_ORPHAN      = new Set(['start', 'folder', 'data', 'note']);
+const SKIP_UNREACHABLE = new Set(          ['folder', 'data', 'note']);
+
 function validateFlow() {
   const issues = [];
   if (state.nodes.length === 0) return issues;
@@ -4263,12 +4274,15 @@ function validateFlow() {
         issues.push({ nodeId: n.id, severity: 'warning', message: `Decision has ${unlabeled} unlabeled branch${unlabeled===1?'':'es'}.` });
       }
     }
-    // Non-End non-leaf node with no outgoing edges
-    if (outs.length === 0 && !['end', 'data', 'note'].includes(n.type)) {
+    // Dead end: no outgoing edges. Skip End (terminus by definition), Note
+    // (commentary), and the file-structure types (leaf folders + saved files
+    // are valid end states for a flow that writes to disk).
+    if (outs.length === 0 && !SKIP_DEAD_END.has(n.type)) {
       issues.push({ nodeId: n.id, severity: 'warning', message: 'Dead end — no outgoing connection. Use an End node if intentional.' });
     }
-    // Orphan: no incoming AND no outgoing, except Start and Note
-    if (ins.length === 0 && outs.length === 0 && !['start', 'note'].includes(n.type)) {
+    // Orphan: no incoming AND no outgoing. Skip Start (it IS the root) and
+    // file-structure types (a brand-new folder or floating file is intentional).
+    if (ins.length === 0 && outs.length === 0 && !SKIP_ORPHAN.has(n.type)) {
       issues.push({ nodeId: n.id, severity: 'warning', message: 'Orphan — not connected to anything.' });
     }
     // Missing or placeholder label
@@ -4277,7 +4291,9 @@ function validateFlow() {
     }
   }
 
-  // Unreachable from any root (cycle without entry)
+  // Unreachable from any root (cycle without entry). Note + file-structure
+  // types are exempt — file trees can have multiple disconnected roots and
+  // that's fine.
   const roots = state.nodes.filter(n => incoming.get(n.id).length === 0);
   if (roots.length > 0) {
     const reachable = new Set();
@@ -4290,7 +4306,7 @@ function validateFlow() {
       for (const e of outs) queue.push(e.target);
     }
     for (const n of state.nodes) {
-      if (!reachable.has(n.id) && incoming.get(n.id).length > 0 && n.type !== 'note') {
+      if (!reachable.has(n.id) && incoming.get(n.id).length > 0 && !SKIP_UNREACHABLE.has(n.type)) {
         issues.push({ nodeId: n.id, severity: 'warning', message: 'Unreachable from any starting node (cycle without entry).' });
       }
     }
@@ -4840,6 +4856,8 @@ function renderPanel() {
             <dt><span class="sev-dot info"></span> No clear starting node</dt>
             <dd>Every node has at least one incoming connection, so there's no obvious entry point for the reader. Either mark one as Start, or silence if the flow loops by design.</dd>
           </dl>
+          <p style="margin-top: 14px;"><strong>Folder &amp; Data nodes are special.</strong> File-structure node types model hierarchy, not procedural flow — so they're exempt from <em>Dead end</em>, <em>Orphan</em>, and <em>Unreachable</em> warnings. A leaf folder is normal, a brand-new folder is normal, a disconnected sub-tree is normal. The only thing they can ever trip is the info-level <em>Node has no label</em>.</p>
+          <p>This also means a flow that terminates at a Folder or Data — like <code>Process → Data ("user.json")</code> for a save-to-disk step — won't nag you to add an explicit End node. "Save to disk" <em>is</em> the end state. See the README's "How warnings interact with node types" section for the full matrix.</p>
         </div>
       </details>
 

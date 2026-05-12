@@ -123,11 +123,41 @@ Three levels of suppression, from most → least surgical:
 | 🔴 error | **Decision has no outgoing branches** | A diamond Decision node has zero outgoing connections — there's nothing to branch into. | You haven't drawn the branches yet, or the decision is intentionally a placeholder. |
 | 🟡 warning | **Decision has only one branch** | A Decision node has a single outgoing connection — there's nothing being decided. | You're modeling a guard / pre-condition rather than a true branch. |
 | 🟡 warning | **Decision has N unlabeled branches** | Two or more outgoing edges from a Decision, but the edges have no labels. | The branch labels aren't useful for what you're documenting. |
-| 🟡 warning | **Dead end — no outgoing connection** | A non-End / non-Data / non-Note node has nowhere to go. | The flow genuinely terminates here and you don't want to drop in an End node. |
-| 🟡 warning | **Orphan — not connected to anything** | A node with no incoming and no outgoing connections. | A floating Note-style node, or a node you parked while restructuring. |
-| 🟡 warning | **Unreachable from any starting node** | The node has incoming edges but you can't get to it from any root (it's behind a cycle with no entry). | Intentional cycle without a clear start, e.g. a state machine without an explicit "init". |
-| 🔵 info | **Node has no label** | The node text is empty or `(untitled)`. | Placeholder while you decide what it should be called. |
-| 🔵 info | **No clear starting node** | Every node has at least one incoming connection — there's no obvious entry point. | The flow loops in a way that's intentional, or it's a fragment meant to be embedded. |
+| 🟡 warning | **Dead end — no outgoing connection** | A flow node (Process / Decision / Screen / Start) has nowhere to go. End / Folder / Data / Note nodes are exempt — see [Node-type behavior](#how-warnings-interact-with-node-types) below. | The flow genuinely terminates here and you don't want to drop in an End node. |
+| 🟡 warning | **Orphan — not connected to anything** | A flow node with no incoming and no outgoing connections. Folder / Data / Start / Note are exempt. | A node you parked while restructuring. |
+| 🟡 warning | **Unreachable from any starting node** | The node has incoming edges but you can't get to it from any root (it's behind a cycle with no entry). Folder / Data / Note are exempt. | Intentional cycle without a clear start, e.g. a state machine without an explicit "init". |
+| 🔵 info | **Node has no label** | The node text is empty or `(untitled)`. Applies to every node type. | Placeholder while you decide what it should be called. |
+| 🔵 info | **No clear starting node** | Every node has at least one incoming connection — there's no obvious entry point. Flow-level only (no specific node). | The flow loops in a way that's intentional, or it's a fragment meant to be embedded. |
+
+### How warnings interact with node types
+
+Not every warning applies to every node type. The validator divides node types into two camps and treats them differently:
+
+- **Flow nodes** — `start`, `process`, `decision`, `end`, `screen` — model **procedural flow**. They get the full set of structural warnings: dead ends, orphans, unreachability, etc. Every node in a procedural flow is expected to be reachable from a Start and either lead somewhere or be an explicit End.
+- **File-structure nodes** — `folder`, `data` — model **hierarchy**. There's no "Start node" for a file system; the root folder *is* the start. Leaf folders are normal. Brand-new folders are normal. Disconnected sub-trees (multiple top-level dirs) are normal. So these types are exempt from every structural warning. The only thing they can ever trip is the info-level "Node has no label."
+- **Note** is exempt from everything except "no label" — notes are commentary, not part of the flow at all.
+
+The full matrix:
+
+| Warning | start | process | decision | end | folder | data | screen | note |
+|---|---|---|---|---|---|---|---|---|
+| Decision has no/one/unlabeled branches | — | — | ✅ | — | — | — | — | — |
+| Dead end | ✅ | ✅ | ✅* | — | — | — | ✅ | — |
+| Orphan | — | ✅ | ✅ | ✅ | — | — | ✅ | — |
+| Unreachable | ✅ | ✅ | ✅ | ✅ | — | — | ✅ | — |
+| No label | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+\* For Decisions the dead-end is reported as the more specific "Decision has no outgoing branches" (error), not the generic "Dead end" (warning).
+
+#### What this means for mixed flows
+
+If your flow passes through a Folder or Data node — for example: `Process: "Save user data" → Data: "user.json"` — the chain is allowed to terminate at the Data without an explicit End. *"Save to disk"* and *"move to folder"* are legitimate end states; the validator doesn't pester you to wrap them with an End node.
+
+The trade-off: if you had a procedural flow that you intended to terminate at an explicit End and you accidentally left it ending at a Data, the validator can no longer catch that. In practice that nudge was wrong more often than right — most "save to file" flows really do end at the file — so it's gone. If you want explicit End nodes everywhere, add them deliberately.
+
+#### Why this matters for the spec output
+
+This treatment also means your **folder-tree exports** are quiet — you can drop a Folder, immediately switch the Spec format to *Folder tree*, and get a clean directory output without "Dead end" / "Orphan" / "Unreachable" noise on every leaf. Same with file-structure JSON or Mermaid output.
 
 ---
 
