@@ -831,7 +831,10 @@
   }
   .connect-handle:hover { r: 8; }
   .waypoint-handle {
-    /* visible always; fill set inline (per-waypoint or edge color) */
+    /* Visible always. Default fill is theme-aware (matches text color so
+       it pops on both light and dark canvases). Per-waypoint or per-edge
+       custom colors override this via an inline fill attribute. */
+    fill: var(--text);
     stroke: var(--bg);
     stroke-width: 1.5;
     cursor: move;
@@ -1370,7 +1373,7 @@
 // =============================================================
 // FlowSpec — visual flowchart builder with LLM-friendly text out
 // =============================================================
-const FLOWSPEC_VERSION = '0.16.0';
+const FLOWSPEC_VERSION = '0.16.1';
 
 const NODE_TYPES = {
   start:    { label: 'Start',    color: '#c0dd97', stroke: '#3b6d11', text: '#173404', shape: 'pill',    hint: 'Where the flow begins. Typically one per chart.' },
@@ -2454,18 +2457,19 @@ function renderEdges() {
       edgesLayer.appendChild(text);
     }
 
-    // Waypoint dots — always visible (slightly bigger + outlined when the
-    // edge is selected, so dragging them is easier)
+    // Waypoint dots — always visible. Slightly bigger + selection-stroked
+    // when the edge is selected so dragging them is easier.
     if (e.waypoints && e.waypoints.length > 0) {
-      const defaultFill = e.color || 'currentColor';
       e.waypoints.forEach((wp, idx) => {
-        const fill = wp.color || defaultFill;
         const handle = el('circle', {
           class: 'waypoint-handle' + (isSel ? ' edge-selected' : ''),
-          cx: wp.x, cy: wp.y, r: isSel ? 6 : 4.5,
-          fill,
+          cx: wp.x, cy: wp.y, r: isSel ? 6.5 : 5,
           'data-edge': e.id, 'data-idx': idx,
         });
+        // Inline fill only when there's a custom color; otherwise the CSS
+        // class fills with var(--text) which is theme-aware.
+        const customFill = wp.color || e.color;
+        if (customFill) handle.setAttribute('fill', customFill);
         attachWaypointHandle(handle, e.id, idx);
         edgesLayer.appendChild(handle);
       });
@@ -3022,6 +3026,7 @@ document.addEventListener('keydown', (ev) => {
     if (idx < types.length) addNode(types[idx]);
   } else if (ev.key === '0' && !ev.metaKey && !ev.ctrlKey && !ev.shiftKey && !ev.altKey) {
     // 0 — add a waypoint at the selected edge's midpoint
+    ev.preventDefault();
     if (state.selectedEdgeId) {
       const e = state.edges.find(x => x.id === state.selectedEdgeId);
       const src = e && state.nodes.find(n => n.id === e.source);
@@ -3029,6 +3034,7 @@ document.addEventListener('keydown', (ev) => {
       if (e && src && tgt) {
         const m = edgePathAndMid(src, tgt, e);
         addWaypointToEdge(e.id, m.mx, m.my);
+        setStatus('Added a bend at the edge midpoint.');
       }
     } else {
       setStatus('Select an edge first, then press 0 to drop a bend on it.');

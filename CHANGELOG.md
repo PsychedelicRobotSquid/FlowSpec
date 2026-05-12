@@ -2,6 +2,12 @@
 
 All notable changes to FlowSpec. Format roughly follows [Keep a Changelog](https://keepachangelog.com/). Versioning is loose pre-1.0 — minor bumps for feature batches, patch bumps for fixes.
 
+## [0.16.1] — 2026-05-11
+
+### Fixed
+- **Hotkey `0` now actually fires** when an edge is selected — added `ev.preventDefault()` and a status message confirming the bend was added. (If you had focus in an input field — e.g., the edge label — the keydown handler intentionally lets the keypress fall through to the input. Click the canvas first to defocus.)
+- **Default waypoint dot is now visible** at any zoom / theme. Was using `currentColor` as the SVG fill fallback, which inherited a near-invisible value in some cases. Now the default fill comes from a CSS class (`var(--text)`) so dots are theme-aware and clearly visible whether the edge is selected or not. Unselected dots also bumped from r=4.5 to r=5
+
 ## [0.16.0] — 2026-05-11
 
 ### Added
