@@ -844,6 +844,14 @@
     stroke: var(--selection);
     stroke-width: 2;
   }
+  .waypoint-handle.selected {
+    stroke: var(--selection);
+    stroke-width: 3;
+    filter: drop-shadow(0 0 5px var(--selection));
+  }
+  [data-theme="dark"] .waypoint-handle.selected {
+    filter: drop-shadow(0 0 7px var(--selection)) drop-shadow(0 0 2px var(--selection));
+  }
   .waypoint-phantom {
     fill: var(--text);
     stroke: var(--bg);
@@ -864,12 +872,17 @@
     stroke-dasharray: 4 4;
     opacity: 0.7; pointer-events: none;
   }
-  /* Frames */
+  /* Frames — outer rect is visual outline only; clicks fall through to canvas
+     so users can marquee inside large frames. The title bar (a separate path
+     at the top) is the drag handle. */
   .frame-rect {
-    cursor: move;
+    pointer-events: none;
   }
   .frame-rect.selected {
     filter: drop-shadow(0 0 6px var(--selection));
+  }
+  .frame-titlebar {
+    cursor: move;
   }
   .frame-title {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -885,6 +898,15 @@
     cursor: nwse-resize;
   }
   .frame-corner.ne, .frame-corner.sw { cursor: nesw-resize; }
+  /* Faint dashed outline on nodes that belong to a frame — visual cue for
+     "this node is part of that frame's group" */
+  .frame-child-outline {
+    fill: none;
+    stroke-width: 1;
+    stroke-dasharray: 3 3;
+    opacity: 0.18;
+    pointer-events: none;
+  }
   @media (pointer: coarse) {
     .edge-hit { stroke-width: 22; }
   }
@@ -1373,7 +1395,7 @@
 // =============================================================
 // FlowSpec — visual flowchart builder with LLM-friendly text out
 // =============================================================
-const FLOWSPEC_VERSION = '0.16.1';
+const FLOWSPEC_VERSION = '0.17.0';
 
 const NODE_TYPES = {
   start:    { label: 'Start',    color: '#c0dd97', stroke: '#3b6d11', text: '#173404', shape: 'pill',    hint: 'Where the flow begins. Typically one per chart.' },
@@ -1398,6 +1420,7 @@ const state = {
   selectedNodeIds: new Set(),  // multi-select for nodes
   selectedEdgeId: null,        // edges are single-select only
   selectedFrameIds: new Set(), // multi-select frames
+  selectedWaypointIds: new Set(), // multi-select waypoints; entries are "edgeId:idx" strings
   frameDrag: null,             // { frameId, mode: 'move'|'resize', anchor, ... }
   mode: 'select',     // 'select' | 'connect' | 'pan'
   connectSource: null,
@@ -1699,7 +1722,7 @@ function render() {
   renderOverlay();
   renderPanel();
 
-  const hasSel = state.selectedNodeIds.size > 0 || state.selectedEdgeId || state.selectedFrameIds.size > 0;
+  const hasSel = state.selectedNodeIds.size > 0 || state.selectedEdgeId || state.selectedFrameIds.size > 0 || state.selectedWaypointIds.size > 0;
   document.getElementById('delete-btn').disabled = !hasSel;
   document.getElementById('connect-btn').classList.toggle('active', state.mode === 'connect');
   document.getElementById('pan-btn').classList.toggle('active', state.mode === 'pan');
@@ -1800,8 +1823,72 @@ function attachWaypointHandle(circle, edgeId, idx) {
   circle.addEventListener('pointerdown', (ev) => {
     ev.stopPropagation();
     pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
-    snapshot();
-    state.waypointDrag = { edgeId, idx, pointerId: ev.pointerId };
+    if (pointers.size >= 2) {
+      cancelOngoingOperations();
+      cancelLongPress();
+      startPinch();
+      return;
+    }
+    armLongPress(ev, waypointMenuItems(edgeId, idx));
+    if (state.mode === 'pan' || state.spaceDown || ev.button === 1) {
+      startPan(ev);
+      return;
+    }
+    const key = wpKey(edgeId, idx);
+    // Shift-click toggles in/out of selection (no drag setup)
+    if (ev.shiftKey) {
+      if (state.selectedWaypointIds.has(key)) state.selectedWaypointIds.delete(key);
+      else state.selectedWaypointIds.add(key);
+      // Clear other selections so shift-toggling stays scoped to waypoints
+      state.selectedNodeIds.clear();
+      state.selectedEdgeId = null;
+      state.selectedFrameIds.clear();
+      render();
+      return;
+    }
+    // Plain click: if not already part of the selection, replace selection
+    if (!state.selectedWaypointIds.has(key)) {
+      state.selectedNodeIds.clear();
+      state.selectedEdgeId = null;
+      state.selectedFrameIds.clear();
+      state.selectedWaypointIds.clear();
+      state.selectedWaypointIds.add(key);
+    }
+    // Set up a unified drag covering all selected waypoints (and any
+    // nodes/frames in the selection — usually empty, but supported)
+    const wp = worldPoint(ev);
+    const groupDrag = state.selectedWaypointIds.size > 1
+      || state.selectedNodeIds.size > 0
+      || state.selectedFrameIds.size > 0;
+    if (groupDrag) {
+      const set = buildMultiDragSet();
+      state.drag = {
+        nodeIds: Array.from(set.nodeIds),
+        frameIds: Array.from(set.frameIds),
+        waypointKeys: Array.from(set.waypointKeys),
+        startX: wp.x, startY: wp.y,
+        origNodePositions: set.origNodePositions,
+        origFramePositions: set.origFramePositions,
+        origWaypointPositions: set.origWaypointPositions,
+        moved: false,
+      };
+    } else {
+      const e = state.edges.find(x => x.id === edgeId);
+      const w = e && e.waypoints && e.waypoints[idx];
+      const origWaypointPositions = new Map();
+      if (w) origWaypointPositions.set(key, { x: w.x, y: w.y });
+      state.drag = {
+        nodeIds: [],
+        frameIds: [],
+        waypointKeys: [key],
+        startX: wp.x, startY: wp.y,
+        origNodePositions: new Map(),
+        origFramePositions: new Map(),
+        origWaypointPositions,
+        moved: false,
+      };
+    }
+    render();
   });
   circle.addEventListener('contextmenu', (ev) => {
     ev.preventDefault(); ev.stopPropagation();
@@ -2162,10 +2249,14 @@ function hexWithAlpha(hex, alpha) {
 
 function renderFrames() {
   framesLayer.innerHTML = '';
+  const TITLE_BAR_H = 28;
   for (const f of state.frames) {
     const isSel = state.selectedFrameIds.has(f.id);
     const stroke = f.color || '#888780';
     const fill = (f.color && hexWithAlpha(f.color, 0.10)) || 'rgba(150,150,150,0.06)';
+    const titleFill = (f.color && hexWithAlpha(f.color, 0.25)) || 'rgba(150,150,150,0.18)';
+    // Outer outline rect — dashed, visual only (pointer-events: none from CSS),
+    // so clicks inside fall through to the canvas marquee handler
     const rect = el('rect', {
       class: 'frame-rect' + (isSel ? ' selected' : ''),
       x: f.x, y: f.y, width: f.w, height: f.h,
@@ -2175,9 +2266,30 @@ function renderFrames() {
       'stroke-dasharray': '6 4',
       'data-frame-id': f.id,
     });
-    attachFrameHandlers(rect, f);
     framesLayer.appendChild(rect);
-    // Title sits inside the top of the frame
+    // Title bar — slightly more opaque tab with rounded TOP corners only,
+    // sits above the body. This is the drag handle for the frame.
+    const tbH = Math.min(TITLE_BAR_H, f.h);
+    const rx = 8;
+    const tbPath =
+      `M ${f.x + rx} ${f.y}` +
+      ` L ${f.x + f.w - rx} ${f.y}` +
+      ` A ${rx} ${rx} 0 0 1 ${f.x + f.w} ${f.y + rx}` +
+      ` L ${f.x + f.w} ${f.y + tbH}` +
+      ` L ${f.x} ${f.y + tbH}` +
+      ` L ${f.x} ${f.y + rx}` +
+      ` A ${rx} ${rx} 0 0 1 ${f.x + rx} ${f.y}` +
+      ` Z`;
+    const titleBar = el('path', {
+      class: 'frame-titlebar',
+      d: tbPath,
+      fill: titleFill,
+      stroke: 'none',
+      'data-frame-id': f.id,
+    });
+    attachFrameHandlers(titleBar, f);
+    framesLayer.appendChild(titleBar);
+    // Title text
     const title = el('text', {
       class: 'frame-title',
       x: f.x + 10, y: f.y + 18,
@@ -2200,6 +2312,23 @@ function renderFrames() {
         });
         attachFrameCornerHandle(h, f, c.anchor);
         framesLayer.appendChild(h);
+      }
+    }
+  }
+
+  // Faint dashed outlines around nodes that belong to a frame (visual cue)
+  for (const f of state.frames) {
+    const stroke = f.color || '#888780';
+    for (const n of state.nodes) {
+      if (n.x >= f.x && n.x <= f.x + f.w && n.y >= f.y && n.y <= f.y + f.h) {
+        const b = nodeBounds(n);
+        framesLayer.appendChild(el('rect', {
+          class: 'frame-child-outline',
+          x: b.x - 4, y: b.y - 4,
+          width: b.w + 8, height: b.h + 8,
+          rx: 4, ry: 4,
+          stroke,
+        }));
       }
     }
   }
@@ -2235,23 +2364,26 @@ function attachFrameHandlers(rect, frame) {
       return;
     }
     const hasMultiSelection = wasInSelection &&
-      (state.selectedFrameIds.size + state.selectedNodeIds.size > 1);
+      (state.selectedFrameIds.size + state.selectedNodeIds.size + state.selectedWaypointIds.size > 1);
     if (!hasMultiSelection) {
       state.selectedFrameIds.clear();
       state.selectedFrameIds.add(frame.id);
       state.selectedNodeIds.clear();
       state.selectedEdgeId = null;
+      state.selectedWaypointIds.clear();
     }
     // Use the unified state.drag — moves every selected node + frame +
-    // every selected frame's children as a single group
+    // every selected frame's children + waypoints inside selected frames
     const wp = worldPoint(ev);
     const set = buildMultiDragSet();
     state.drag = {
       nodeIds: Array.from(set.nodeIds),
       frameIds: Array.from(set.frameIds),
+      waypointKeys: Array.from(set.waypointKeys),
       startX: wp.x, startY: wp.y,
       origNodePositions: set.origNodePositions,
       origFramePositions: set.origFramePositions,
+      origWaypointPositions: set.origWaypointPositions,
       moved: false,
     };
     render();
@@ -2458,16 +2590,18 @@ function renderEdges() {
     }
 
     // Waypoint dots — always visible. Slightly bigger + selection-stroked
-    // when the edge is selected so dragging them is easier.
+    // when the edge is selected. Glowing + thicker when individually selected.
     if (e.waypoints && e.waypoints.length > 0) {
       e.waypoints.forEach((wp, idx) => {
+        const isWpSel = state.selectedWaypointIds.has(wpKey(e.id, idx));
+        const cls = 'waypoint-handle'
+          + (isSel ? ' edge-selected' : '')
+          + (isWpSel ? ' selected' : '');
         const handle = el('circle', {
-          class: 'waypoint-handle' + (isSel ? ' edge-selected' : ''),
-          cx: wp.x, cy: wp.y, r: isSel ? 6.5 : 5,
+          class: cls,
+          cx: wp.x, cy: wp.y, r: (isSel || isWpSel) ? 6.5 : 5,
           'data-edge': e.id, 'data-idx': idx,
         });
-        // Inline fill only when there's a custom color; otherwise the CSS
-        // class fills with var(--text) which is theme-aware.
         const customFill = wp.color || e.color;
         if (customFill) handle.setAttribute('fill', customFill);
         attachWaypointHandle(handle, e.id, idx);
@@ -2564,27 +2698,33 @@ function attachNodeHandlers(g, node) {
       state.selectedFrameIds.clear();
     }
 
-    // Begin drag. If the selection includes other items (nodes or frames),
-    // drag them all as a group. Otherwise drag just this node.
+    // Begin drag. If the selection includes other items (nodes / frames /
+    // waypoints), drag them all as a group. Otherwise drag just this node.
     const wp = worldPoint(ev);
-    const groupDrag = state.selectedFrameIds.size > 0 || state.selectedNodeIds.size > 1;
+    const groupDrag = state.selectedFrameIds.size > 0
+      || state.selectedNodeIds.size > 1
+      || state.selectedWaypointIds.size > 0;
     if (groupDrag) {
       const set = buildMultiDragSet();
       state.drag = {
         nodeIds: Array.from(set.nodeIds),
         frameIds: Array.from(set.frameIds),
+        waypointKeys: Array.from(set.waypointKeys),
         startX: wp.x, startY: wp.y,
         origNodePositions: set.origNodePositions,
         origFramePositions: set.origFramePositions,
+        origWaypointPositions: set.origWaypointPositions,
         moved: false,
       };
     } else {
       state.drag = {
         nodeIds: [node.id],
         frameIds: [],
+        waypointKeys: [],
         startX: wp.x, startY: wp.y,
         origNodePositions: new Map([[node.id, { x: node.x, y: node.y }]]),
         origFramePositions: new Map(),
+        origWaypointPositions: new Map(),
         moved: false,
       };
     }
@@ -2646,8 +2786,15 @@ svg.addEventListener('pointerdown', (ev) => {
     state.selectedNodeIds.clear();
     state.selectedEdgeId = null;
     state.selectedFrameIds.clear();
+    state.selectedWaypointIds.clear();
   }
-  state.marquee = { x1: wp.x, y1: wp.y, x2: wp.x, y2: wp.y, additive: ev.shiftKey, baseSelection: new Set(state.selectedNodeIds), baseFrameSelection: new Set(state.selectedFrameIds) };
+  state.marquee = {
+    x1: wp.x, y1: wp.y, x2: wp.x, y2: wp.y,
+    additive: ev.shiftKey,
+    baseSelection: new Set(state.selectedNodeIds),
+    baseFrameSelection: new Set(state.selectedFrameIds),
+    baseWaypointSelection: new Set(state.selectedWaypointIds),
+  };
   state.pendingMarquee = false; // consume the one-shot
   render();
 });
@@ -2760,6 +2907,18 @@ document.addEventListener('pointermove', (ev) => {
       f.x = Math.round((orig.x + dx) / 10) * 10;
       f.y = Math.round((orig.y + dy) / 10) * 10;
     }
+    // Provisional waypoint positions
+    if (state.drag.waypointKeys && state.drag.waypointKeys.length > 0) {
+      for (const key of state.drag.waypointKeys) {
+        const { edgeId, idx } = parseWpKey(key);
+        const e = state.edges.find(x => x.id === edgeId);
+        const wp = e && e.waypoints && e.waypoints[idx];
+        const orig = state.drag.origWaypointPositions.get(key);
+        if (!wp || !orig) continue;
+        wp.x = Math.round((orig.x + dx) / 10) * 10;
+        wp.y = Math.round((orig.y + dy) / 10) * 10;
+      }
+    }
     // Alignment guides only when dragging exactly one node and no frames
     const SNAP_PX_SCREEN = 6;
     const snapPx = SNAP_PX_SCREEN / state.zoom;
@@ -2767,7 +2926,10 @@ document.addEventListener('pointermove', (ev) => {
     const others = state.nodes.filter(n => !dragIds.has(n.id));
     let snapX = null, snapY = null;
     const guides = [];
-    if (state.drag.nodeIds.length === 1 && state.drag.frameIds.length === 0 && others.length > 0) {
+    if (state.drag.nodeIds.length === 1
+        && state.drag.frameIds.length === 0
+        && (!state.drag.waypointKeys || state.drag.waypointKeys.length === 0)
+        && others.length > 0) {
       const n = state.nodes.find(x => x.id === state.drag.nodeIds[0]);
       const b = nodeBounds(n);
       const srcXs = [b.x, b.cx, b.x + b.w];
@@ -2808,6 +2970,7 @@ document.addEventListener('pointermove', (ev) => {
     }
     // Frames moved — re-render the frames layer (cheap; ~1ms even at large counts)
     if (state.drag.frameIds.length > 0) renderFrames();
+    // Edges always re-render (waypoints / endpoint positions may have changed)
     renderEdges();
     renderOverlay();
     return;
@@ -2842,9 +3005,21 @@ document.addEventListener('pointermove', (ev) => {
       }
     }
     state.selectedFrameIds = frameHits;
+    // Waypoints: include if their position is inside the marquee
+    const wpHits = new Set(m.additive ? m.baseWaypointSelection : []);
+    for (const e of state.edges) {
+      if (!e.waypoints) continue;
+      e.waypoints.forEach((wp, idx) => {
+        if (wp.x >= minX && wp.x <= maxX && wp.y >= minY && wp.y <= maxY) {
+          wpHits.add(wpKey(e.id, idx));
+        }
+      });
+    }
+    state.selectedWaypointIds = wpHits;
     renderOverlay();
     renderNodes();
     renderFrames();
+    renderEdges();
     return;
   }
 });
@@ -2998,7 +3173,7 @@ document.addEventListener('keydown', (ev) => {
     return;
   }
   if (ev.key === 'Delete' || ev.key === 'Backspace') {
-    if (state.selectedNodeIds.size > 0 || state.selectedEdgeId || state.selectedFrameIds.size > 0) deleteSelected();
+    if (state.selectedNodeIds.size > 0 || state.selectedEdgeId || state.selectedFrameIds.size > 0 || state.selectedWaypointIds.size > 0) deleteSelected();
   } else if (ev.key === 'Escape') {
     if (state.searchHits.size > 0 && typeof closeSearch === 'function') {
       closeSearch();
@@ -3108,6 +3283,7 @@ function selectNode(id) {
   state.selectedNodeIds.add(id);
   state.selectedEdgeId = null;
   state.selectedFrameIds.clear();
+  state.selectedWaypointIds.clear();
   state.panTab = 'properties';
   render();
 }
@@ -3115,6 +3291,7 @@ function selectEdge(id) {
   state.selectedNodeIds.clear();
   state.selectedEdgeId = id;
   state.selectedFrameIds.clear();
+  state.selectedWaypointIds.clear();
   state.panTab = 'properties';
   render();
 }
@@ -3122,9 +3299,21 @@ function clearSelection() {
   state.selectedNodeIds.clear();
   state.selectedEdgeId = null;
   state.selectedFrameIds.clear();
+  state.selectedWaypointIds.clear();
+}
+
+// Waypoint selection key helpers — compound "edgeId:idx" strings
+function wpKey(edgeId, idx) { return edgeId + ':' + idx; }
+function parseWpKey(key) {
+  const i = key.lastIndexOf(':');
+  return { edgeId: key.slice(0, i), idx: parseInt(key.slice(i + 1), 10) };
 }
 function deleteSelected() {
-  if (state.selectedNodeIds.size === 0 && !state.selectedEdgeId && state.selectedFrameIds.size === 0) return;
+  const hasAny = state.selectedNodeIds.size > 0
+    || state.selectedEdgeId
+    || state.selectedFrameIds.size > 0
+    || state.selectedWaypointIds.size > 0;
+  if (!hasAny) return;
   snapshot();
   if (state.selectedNodeIds.size > 0) {
     const ids = state.selectedNodeIds;
@@ -3136,6 +3325,25 @@ function deleteSelected() {
   }
   if (state.selectedFrameIds.size > 0) {
     state.frames = state.frames.filter(f => !state.selectedFrameIds.has(f.id));
+  }
+  // Waypoints — group by edge, sort indices descending, splice from highest
+  // first so earlier deletions don't shift later indices
+  if (state.selectedWaypointIds.size > 0) {
+    const byEdge = new Map();
+    for (const key of state.selectedWaypointIds) {
+      const { edgeId, idx } = parseWpKey(key);
+      if (!byEdge.has(edgeId)) byEdge.set(edgeId, []);
+      byEdge.get(edgeId).push(idx);
+    }
+    for (const [edgeId, indices] of byEdge) {
+      const e = state.edges.find(x => x.id === edgeId);
+      if (!e || !e.waypoints) continue;
+      indices.sort((a, b) => b - a);
+      for (const i of indices) {
+        if (i >= 0 && i < e.waypoints.length) e.waypoints.splice(i, 1);
+      }
+      if (e.waypoints.length === 0) delete e.waypoints;
+    }
   }
   clearSelection();
   save();
@@ -3174,12 +3382,19 @@ function addNode(type) {
 }
 
 // Build a unified drag set from the current selection. Used when dragging a
-// node or frame that's part of a multi-selection — everything moves together.
-// The children of every selected frame are folded into the nodes set so they
-// move with the frame (even if they weren't explicitly selected).
+// node, frame, or waypoint that's part of a multi-selection — everything
+// moves together.
+//   - The children of every selected frame are folded into the nodes set
+//     so they move with the frame (even if they weren't explicitly selected)
+//   - Any waypoint whose position lies inside a selected frame is also
+//     folded in, so a frame's bend points move with it
+//   - Explicitly-selected waypoints are always included
 function buildMultiDragSet() {
   const nodeIds = new Set(state.selectedNodeIds);
   const frameIds = new Set(state.selectedFrameIds);
+  const waypointKeys = new Set(state.selectedWaypointIds);
+  // Fold frame contents into the node set, and waypoints inside frames into
+  // the waypoint set
   for (const fid of frameIds) {
     const f = state.frames.find(x => x.id === fid);
     if (!f) continue;
@@ -3187,6 +3402,14 @@ function buildMultiDragSet() {
       if (n.x >= f.x && n.x <= f.x + f.w && n.y >= f.y && n.y <= f.y + f.h) {
         nodeIds.add(n.id);
       }
+    }
+    for (const e of state.edges) {
+      if (!e.waypoints) continue;
+      e.waypoints.forEach((wp, idx) => {
+        if (wp.x >= f.x && wp.x <= f.x + f.w && wp.y >= f.y && wp.y <= f.y + f.h) {
+          waypointKeys.add(wpKey(e.id, idx));
+        }
+      });
     }
   }
   const origNodePositions = new Map();
@@ -3199,7 +3422,14 @@ function buildMultiDragSet() {
     const f = state.frames.find(x => x.id === id);
     if (f) origFramePositions.set(id, { x: f.x, y: f.y });
   }
-  return { nodeIds, frameIds, origNodePositions, origFramePositions };
+  const origWaypointPositions = new Map();
+  for (const key of waypointKeys) {
+    const { edgeId, idx } = parseWpKey(key);
+    const e = state.edges.find(x => x.id === edgeId);
+    const w = e && e.waypoints && e.waypoints[idx];
+    if (w) origWaypointPositions.set(key, { x: w.x, y: w.y });
+  }
+  return { nodeIds, frameIds, waypointKeys, origNodePositions, origFramePositions, origWaypointPositions };
 }
 
 // ---------- Copy / Cut / Paste ----------
@@ -4145,7 +4375,8 @@ function renderPanel() {
           <p><strong>By dragging</strong> — select a node, then drag from one of the 4 small handles on its edges to another node.</p>
           <p><strong>By two clicks</strong> — toggle <span class="kbd">↳ Connect</span> (or <span class="kbd">C</span>), then click the source node, then the target.</p>
           <p><strong>Label an edge</strong> — click the line itself, then type a label in Properties (e.g. <em>yes</em>, <em>no</em>, <em>retry</em>).</p>
-          <p><strong>Bend an edge (waypoints)</strong> — select an edge, then click / tap anywhere on the line to drop a bend point at that spot. On desktop a faint phantom dot follows your cursor over the line so you can see where the bend will land. Press <span class="kbd">0</span> to drop one at the edge's midpoint. Drag the dot to move it; right-click for color (6 presets) or delete. Bend points are always visible — straight-line segments connect them, no curves.</p>
+          <p><strong>Bend an edge (waypoints)</strong> — select an edge, then click / tap anywhere on the line to drop a bend point at that spot. On desktop a faint phantom dot follows your cursor over the line. Press <span class="kbd">0</span> to drop a bend at the edge's midpoint. Bend points are always visible; straight-line segments connect them (no curves).</p>
+          <p><strong>Waypoints are first-class</strong> — click a bend dot to select it (Shift-click adds/removes from selection). Selected dots glow. Drag any selected dot to move the whole group. Press <span class="kbd">Delete</span> to remove all selected bends. Right-click / long-press still works for color (6 presets) and delete.</p>
         </div>
       </details>
 
@@ -4182,7 +4413,9 @@ function renderPanel() {
         <div class="help-body">
           <p><strong>Add a frame</strong> — click <span class="kbd">▢ Frame</span> in the toolbar, or press <span class="kbd">G</span>. With 2+ nodes selected, this <em>wraps</em> them in a sized frame; otherwise it drops an empty frame in the center.</p>
           <p>Right-click a selected node (when 2+ are selected) for <strong>Wrap N nodes in frame</strong>.</p>
-          <p>Drag the frame body to move it — every node inside moves with it. Drag a corner handle to resize. Properties: title, color, delete.</p>
+          <p><strong>Frames are containers</strong> — drag the slightly-darker <em>title bar</em> at the top to move the frame (every node inside moves with it; bend points inside move too). The body of the frame is click-through, so you can <strong>marquee-select inside large frames</strong> like the rest of the canvas.</p>
+          <p>Each node that belongs to a frame gets a faint dashed outline in the frame's color so you can tell at a glance what's in vs. out.</p>
+          <p>Drag a corner handle to resize. Properties: title, color, delete.</p>
           <p>Frames are included in Markdown / Narrative / JSON / Mermaid spec outputs (as Groups / subgraphs).</p>
         </div>
       </details>

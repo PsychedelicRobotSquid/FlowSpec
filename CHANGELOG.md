@@ -2,6 +2,20 @@
 
 All notable changes to FlowSpec. Format roughly follows [Keep a Changelog](https://keepachangelog.com/). Versioning is loose pre-1.0 — minor bumps for feature batches, patch bumps for fixes.
 
+## [0.17.0] — 2026-05-11
+
+### Added
+- **Bend points are now first-class selectable objects**. Click a waypoint to select it (Shift-click toggles in/out). Selected waypoints render with a thicker selection-color stroke + a soft glow. Press <kbd>Delete</kbd> to remove all selected waypoints — multi-delete handles index shifts safely. Marquee select also picks up waypoints whose position is inside the box. Drag any selected waypoint to move the whole group. Right-click / long-press for color + delete still works
+- **Frames are now true containers**:
+  - The top of every frame is a slightly more opaque **title bar** that's the only place that selects + drags the frame
+  - The frame's body is click-through (`pointer-events: none`) so you can **marquee-select inside large frames** like anywhere else on the canvas
+  - Right-click on the title bar = frame menu; right-click in the body = canvas menu
+- **Bend points respect frames** — when a frame moves, every waypoint whose position is inside the frame's bounds moves with it (folded into the same multi-drag set used for child nodes)
+- **Faint dashed outline** around every node that belongs to a frame, in the frame's color, very low opacity. Visual cue for "what's in vs. out" without cluttering
+
+### Changed
+- Internal: `state.selectedWaypointIds` (Set of `"edgeId:idx"` keys), `state.drag.waypointKeys` + `origWaypointPositions` for unified drag
+
 ## [0.16.1] — 2026-05-11
 
 ### Fixed

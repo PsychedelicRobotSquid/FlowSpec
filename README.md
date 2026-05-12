@@ -21,8 +21,8 @@ Most diagramming tools (Excalidraw, draw.io, Whimsical) export images or proprie
 ### Editor
 - **8 node types** — Start, Process, Decision, End, Folder, File/Data, Screen, Note — each with distinct shapes and colors
 - **Per-node sizing** (Small / Medium / Large), labels (multi-line), descriptions, and custom color overrides
-- **Edge styling** — solid / dashed / dotted, custom color, waypoints to bend connections (click an already-selected edge to drop a bend point, or press `0` to drop one at the midpoint; per-bend color)
-- **Frames / groups** — labeled containers around a set of nodes; drag a frame to move it and everything inside. Press `G` (or click `▢ Frame`) with 2+ nodes selected to wrap them in a sized frame. Multi-selectable; included in spec output (Markdown / Narrative / JSON / Mermaid)
+- **Edge styling** — solid / dashed / dotted, custom color, waypoints to bend connections (click an already-selected edge to drop a bend point, or press `0` to drop one at the midpoint). Bend points are first-class: click to select, Shift-click to multi-select, drag to move the group, `Delete` to remove, right-click for color
+- **Frames / groups** — labeled containers around a set of nodes. Drag the **title bar** (slightly darker tab at the top) to move the frame; everything inside (nodes + bend points) moves with it. The frame's body is click-through, so you can **marquee-select inside large frames**. Faint dashed outline in the frame's color shows which nodes belong to it. Press `G` (or click `▢ Frame`) with 2+ nodes selected to wrap them. Multi-selectable; included in spec output (Markdown / Narrative / JSON / Mermaid)
 - **Drag-to-connect** — drag from handles on a selected node to any other node
 - **Multi-select** — marquee drag or Shift-click, with align + distribute tools
 - **Copy / cut / paste / duplicate** (Cmd/Ctrl + C / X / V / D), works across projects
